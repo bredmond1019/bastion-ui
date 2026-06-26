@@ -14,7 +14,18 @@ Flutter mobile Surface (Android phone + tablet) for remotely operating the whole
 ## Standing rules
 
 1. **Every block/task ships with tests** covering its core functionality. No exceptions.
-2. **Maintain OKF frontmatter** on every markdown file.
+2. **OKF frontmatter is required on every new `.md` file** under `docs/` and `planning/`.
+   Every new file must open with a YAML frontmatter block. Three fields are **required**:
+   `type`, `title`, `description`. Six fields are **optional but strongly encouraged**:
+   - `doc_id` — kebab-case stable id (defaults to filename stem if omitted)
+   - `layer` — list from closed vocab: `brain` · `engine` · `factory` · `console` · `surface` · `infra` · `business` · `content` · `meta`
+   - `project` — controlled slug (this repo: `bastion-ui`; omit for genuinely cross-cutting docs); closed vocab: `bastion` · `python-orchestration` · `learn-ai` · `rag-engine-rs` · `claude-sdk-rs` · `workflow-engine-rs` · `markdown-engine-validator` · `bella` · `price-scout` · `amistad` · `base-template` · `brain`
+   - `status` — one of: `active` · `draft` · `deprecated` · `superseded` · `archived`
+   - `keywords` — 3–7 free-form topic terms; never exceed 7
+   - `related` — list of `doc_id` values from other real docs in the repo
+   Canonical guide: `docs/okf-frontmatter.md` in the company-brain repo; governing decision: D27.
+   **Adding a file to a directory also requires updating that directory's `index.md`** — propagate
+   up the chain if the parent directory's scope changes.
 3. **Sequence, not calendar** — work the order in `master-plan.md`; pick up where you left off.
 4. **Decisions are append-only** — never edit a settled decision; supersede it with a new
    atomic file in `planning/decisions/` and link back.

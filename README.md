@@ -2,6 +2,12 @@
 type: Index
 title: BastionUI
 description: Flutter mobile Surface (Android phone + tablet) for remotely operating the whole Bastion practice OS over Tailscale, backed by a bastion serve HTTP+WebSocket API.
+doc_id: readme
+layer: [surface]
+project: bastion-ui
+status: active
+keywords: [Flutter, mobile surface, BastionUI, bastion serve, WebSocket, Android]
+related: [context, status, master-plan, planning-index]
 ---
 
 # BastionUI
