@@ -1,30 +1,45 @@
-/// REST client for `bastion serve` — v0 surface only.
+/// REST client for `bastion serve` — v0 + session (v0.1) surface.
 ///
-/// Implements the v0 HTTP surface from serve-api.md (v0.1):
+/// Implements:
 ///   - `GET /health` → [HealthDto]  (public — no bearer required, but harmless to send)
+///   - Session REST routes (serve-api.md §10, v0.1): [getSessions], [getPane],
+///     [sendKeys], [sendKey], [createSession], [deleteSession].
 ///
 /// A `401` response is decoded as a typed [FatalAuthError] and rethrown;
 /// the caller must not retry after receiving [FatalAuthError].
-///
-/// Session REST routes (§6, v0.1) are Phase 1+ — **out of scope here**.
 library;
 
 import 'dart:convert';
 import 'dart:io';
 
 import '../models/dto.dart';
+import '../models/session_dto.dart';
 
 // ---------------------------------------------------------------------------
 // Transport abstraction (enables unit testing without a real network)
 // ---------------------------------------------------------------------------
 
-/// Minimal HTTP GET interface used by [BastionApi].
+/// Minimal HTTP interface used by [BastionApi].
 ///
 /// The default implementation uses [dart:io]'s [HttpClient].
 /// Tests may supply a [FakeHttpTransport].
 abstract interface class HttpTransport {
   /// Perform a GET request and return the response status code + body.
   Future<({int statusCode, String body})> get(
+    String url, {
+    Map<String, String> headers = const {},
+  });
+
+  /// Perform a POST request with an optional JSON [body] and return the
+  /// response status code + body.
+  Future<({int statusCode, String body})> post(
+    String url, {
+    Map<String, String> headers = const {},
+    String? body,
+  });
+
+  /// Perform a DELETE request and return the response status code + body.
+  Future<({int statusCode, String body})> delete(
     String url, {
     Map<String, String> headers = const {},
   });
@@ -49,6 +64,40 @@ final class IoHttpTransport implements HttpTransport {
     final response = await request.close();
     final body = await response.transform(utf8.decoder).join();
     return (statusCode: response.statusCode, body: body);
+  }
+
+  @override
+  Future<({int statusCode, String body})> post(
+    String url, {
+    Map<String, String> headers = const {},
+    String? body,
+  }) async {
+    final uri = Uri.parse(url);
+    final request = await _client.postUrl(uri);
+    for (final entry in headers.entries) {
+      request.headers.set(entry.key, entry.value);
+    }
+    if (body != null) {
+      request.write(body);
+    }
+    final response = await request.close();
+    final respBody = await response.transform(utf8.decoder).join();
+    return (statusCode: response.statusCode, body: respBody);
+  }
+
+  @override
+  Future<({int statusCode, String body})> delete(
+    String url, {
+    Map<String, String> headers = const {},
+  }) async {
+    final uri = Uri.parse(url);
+    final request = await _client.deleteUrl(uri);
+    for (final entry in headers.entries) {
+      request.headers.set(entry.key, entry.value);
+    }
+    final response = await request.close();
+    final respBody = await response.transform(utf8.decoder).join();
+    return (statusCode: response.statusCode, body: respBody);
   }
 
   /// Release underlying socket connections.
@@ -129,12 +178,15 @@ final class BastionApi {
     'Accept': 'application/json',
   };
 
-  /// Parse a response and throw typed errors for non-2xx codes.
-  T _decode<T>(
-    int statusCode,
-    String body,
-    T Function(Map<String, dynamic>) fromJson,
-  ) {
+  /// Headers for requests that send a JSON body (POST with a body).
+  Map<String, String> get _jsonHeaders => {
+    ..._defaultHeaders,
+    'Content-Type': 'application/json',
+  };
+
+  /// Throw the appropriate typed error for a non-2xx status code; no-op
+  /// (returns normally) for 2xx statuses.
+  void _checkStatus(int statusCode, String body) {
     if (statusCode == 401) {
       final Map<String, dynamic> json;
       try {
@@ -147,6 +199,16 @@ final class BastionApi {
     if (statusCode < 200 || statusCode >= 300) {
       throw ApiError(statusCode: statusCode, body: body);
     }
+  }
+
+  /// Parse a response body as a single JSON object and throw typed errors
+  /// for non-2xx codes.
+  T _decode<T>(
+    int statusCode,
+    String body,
+    T Function(Map<String, dynamic>) fromJson,
+  ) {
+    _checkStatus(statusCode, body);
     final Map<String, dynamic> json;
     try {
       json = jsonDecode(body) as Map<String, dynamic>;
@@ -154,6 +216,29 @@ final class BastionApi {
       throw ApiError(statusCode: statusCode, body: 'invalid JSON: $body');
     }
     return fromJson(json);
+  }
+
+  /// Parse a response body as a JSON array and throw typed errors for
+  /// non-2xx codes.
+  List<T> _decodeList<T>(
+    int statusCode,
+    String body,
+    T Function(Map<String, dynamic>) fromJson,
+  ) {
+    _checkStatus(statusCode, body);
+    final Object? decoded;
+    try {
+      decoded = jsonDecode(body);
+    } catch (e) {
+      throw ApiError(statusCode: statusCode, body: 'invalid JSON: $body');
+    }
+    if (decoded is! List) {
+      throw ApiError(
+        statusCode: statusCode,
+        body: 'expected JSON array: $body',
+      );
+    }
+    return decoded.whereType<Map<String, dynamic>>().map(fromJson).toList();
   }
 
   // -------------------------------------------------------------------------
@@ -173,6 +258,96 @@ final class BastionApi {
       headers: _defaultHeaders,
     );
     return _decode(result.statusCode, result.body, HealthDto.fromJson);
+  }
+
+  // -------------------------------------------------------------------------
+  // Session REST (v0.1) endpoints — serve-api.md §10
+  // -------------------------------------------------------------------------
+
+  /// `GET /api/sessions` — list all current tmux sessions.
+  ///
+  /// Throws [FatalAuthError] on `401`, [ApiError] on other HTTP errors
+  /// (including tmux degradation per §10.4), or a [SocketException] /
+  /// [HttpException] on network failure.
+  Future<List<SessionDto>> getSessions() async {
+    final result = await _transport.get(
+      '$_baseUrl/api/sessions',
+      headers: _defaultHeaders,
+    );
+    return _decodeList(result.statusCode, result.body, SessionDto.fromJson);
+  }
+
+  /// `GET /api/sessions/{name}/pane` — read pane output for [name].
+  ///
+  /// [lines], if given, caps the number of trailing lines returned; omit to
+  /// return all non-blank lines.
+  ///
+  /// Throws [ApiError] with a `404` status when the session does not exist.
+  Future<PaneDto> getPane(String name, {int? lines}) async {
+    final encodedName = Uri.encodeComponent(name);
+    var url = '$_baseUrl/api/sessions/$encodedName/pane';
+    if (lines != null) {
+      url = '$url?lines=$lines';
+    }
+    final result = await _transport.get(url, headers: _defaultHeaders);
+    return _decode(result.statusCode, result.body, PaneDto.fromJson);
+  }
+
+  /// `POST /api/sessions/{name}/send` — send a literal key sequence
+  /// (followed by `Enter`) to session [name].
+  ///
+  /// Returns normally on `204 No Content`. Throws [ApiError] with a `404`
+  /// status when the session does not exist.
+  Future<void> sendKeys(String name, String keys) async {
+    final encodedName = Uri.encodeComponent(name);
+    final result = await _transport.post(
+      '$_baseUrl/api/sessions/$encodedName/send',
+      headers: _jsonHeaders,
+      body: jsonEncode({'keys': keys}),
+    );
+    _checkStatus(result.statusCode, result.body);
+  }
+
+  /// `POST /api/sessions/{name}/key` — send a single symbolic tmux key
+  /// name (e.g. `"Escape"`, `"Enter"`, `"C-c"`) to session [name].
+  ///
+  /// Returns normally on `204 No Content`. Throws [ApiError] with a `404`
+  /// status when the session does not exist.
+  Future<void> sendKey(String name, String key) async {
+    final encodedName = Uri.encodeComponent(name);
+    final result = await _transport.post(
+      '$_baseUrl/api/sessions/$encodedName/key',
+      headers: _jsonHeaders,
+      body: jsonEncode({'key': key}),
+    );
+    _checkStatus(result.statusCode, result.body);
+  }
+
+  /// `POST /api/sessions` — create a new detached tmux session named
+  /// [name], optionally starting in [dir].
+  ///
+  /// Returns normally on `201 Created`. Throws [ApiError] with a `500`
+  /// status when the session name is already in use.
+  Future<void> createSession(String name, {String? dir}) async {
+    final result = await _transport.post(
+      '$_baseUrl/api/sessions',
+      headers: _jsonHeaders,
+      body: jsonEncode({'name': name, 'dir': ?dir}),
+    );
+    _checkStatus(result.statusCode, result.body);
+  }
+
+  /// `DELETE /api/sessions/{name}` — kill session [name].
+  ///
+  /// Returns normally on `204 No Content`. Throws [ApiError] with a `404`
+  /// status when the session does not exist.
+  Future<void> deleteSession(String name) async {
+    final encodedName = Uri.encodeComponent(name);
+    final result = await _transport.delete(
+      '$_baseUrl/api/sessions/$encodedName',
+      headers: _defaultHeaders,
+    );
+    _checkStatus(result.statusCode, result.body);
   }
 
   // -------------------------------------------------------------------------
