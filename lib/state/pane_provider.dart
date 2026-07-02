@@ -47,7 +47,7 @@ final paneProvider = StateNotifierProvider.autoDispose
         socket: ref.watch(bastionSocketProvider),
         api: ref.watch(bastionApiProvider),
       );
-    });
+    }, dependencies: [bastionSocketProvider, bastionApiProvider]);
 
 /// Owns the `"pane:<name>"` topic subscription, REST seed, and `seq`-ordered
 /// buffer for [paneProvider].

@@ -73,7 +73,7 @@ final sessionsProvider =
         socket: ref.watch(bastionSocketProvider),
         api: ref.watch(bastionApiProvider),
       );
-    });
+    }, dependencies: [bastionSocketProvider, bastionApiProvider]);
 
 /// Owns the `"sessions"` topic subscription and REST seed for
 /// [sessionsProvider].

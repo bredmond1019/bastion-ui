@@ -35,7 +35,7 @@ final needsInputEventsProvider = Provider<Stream<EventFrame>>((ref) {
   return socket.frames
       .where((frame) => frame is EventFrame && frame.event == needsInputEvent)
       .cast<EventFrame>();
-});
+}, dependencies: [bastionSocketProvider]);
 
 // ---------------------------------------------------------------------------
 // Derived per-session flag state
@@ -53,7 +53,7 @@ final needsInputProvider =
       // register `ref.onDispose(notifier.dispose)` here, or dispose() runs
       // twice.
       return NeedsInputNotifier(ref.watch(needsInputEventsProvider));
-    });
+    }, dependencies: [needsInputEventsProvider]);
 
 /// Tracks the current set of sessions with a pending `needs_input` flag.
 class NeedsInputNotifier extends StateNotifier<Set<String>> {

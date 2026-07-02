@@ -10,10 +10,15 @@ library;
 import 'package:flutter/material.dart' hide ConnectionState;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'screens/session_detail_screen.dart';
+import 'screens/sessions_list_screen.dart';
 import 'screens/settings_screen.dart';
+import 'services/bastion_api.dart';
 import 'services/bastion_socket.dart';
 import 'services/notifications.dart';
 import 'state/connection_provider.dart';
+import 'state/sessions_provider.dart'
+    show bastionApiProvider, bastionSocketProvider;
 import 'widgets/connection_banner.dart';
 
 Future<void> main() async {
@@ -51,6 +56,21 @@ class BastionApp extends StatelessWidget {
         useMaterial3: true,
       ),
       home: const HomeShell(),
+      // Handles `sessionDetailRouteName(name)` pushes from
+      // `SessionsListScreen`'s session cards.
+      onGenerateRoute: (settings) {
+        final name = settings.name;
+        if (name != null && name.startsWith('/sessions/')) {
+          final sessionName = Uri.decodeComponent(
+            name.substring('/sessions/'.length),
+          );
+          return MaterialPageRoute<void>(
+            builder: (_) => SessionDetailScreen(sessionName: sessionName),
+            settings: settings,
+          );
+        }
+        return null;
+      },
     );
   }
 }
@@ -77,6 +97,7 @@ class HomeShell extends ConsumerStatefulWidget {
 
 class _HomeShellState extends ConsumerState<HomeShell> {
   BastionSocket? _socket;
+  BastionApi? _api;
 
   @override
   void initState() {
@@ -98,15 +119,18 @@ class _HomeShellState extends ConsumerState<HomeShell> {
     _openSocket(config, token);
   }
 
-  /// Tear down any existing socket and open a new one for [config]/[token].
+  /// Tear down any existing socket/API client and open new ones for
+  /// [config]/[token].
   void _openSocket(ConnectionConfig config, String token) {
     _socket?.dispose();
+    _api?.dispose();
     final socket = BastionSocket(
       host: config.host,
       port: config.port,
       token: token,
     );
     _socket = socket;
+    _api = BastionApi(host: config.host, port: config.port, token: token);
 
     // Bridge socket status into connectionProvider so the banner and other
     // widgets that watch the provider update automatically.
@@ -117,6 +141,9 @@ class _HomeShellState extends ConsumerState<HomeShell> {
     });
 
     socket.connect();
+    // Rebuild so the session/pane/event provider tree gets overridden with
+    // this live socket/API pair (see build()).
+    if (mounted) setState(() {});
   }
 
   /// Called when the user saves new settings — reconnects with fresh config.
@@ -129,6 +156,7 @@ class _HomeShellState extends ConsumerState<HomeShell> {
   @override
   void dispose() {
     _socket?.dispose();
+    _api?.dispose();
     super.dispose();
   }
 
@@ -157,16 +185,63 @@ class _HomeShellState extends ConsumerState<HomeShell> {
           ),
         ],
       ),
-      body: const Column(
+      body: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           // Live connection-status banner — always visible at the top of the
           // operator surface so the user knows the tailnet link state.
-          ConnectionBanner(),
-          // Dashboard body — wired per Phase 1.
-          Expanded(child: Center(child: Text('Dashboard — Phase 1'))),
+          const ConnectionBanner(),
+          Expanded(
+            child: _socket == null || _api == null
+                ? const Center(
+                    child: Text('Configure a connection in Settings'),
+                  )
+                : ConnectedSessionsBody(socket: _socket!, api: _api!),
+          ),
         ],
       ),
     );
+  }
+}
+
+/// Session/pane/event provider tree, live once [socket]/[api] are connected.
+///
+/// A fresh nested [ProviderScope] overrides `bastionSocketProvider` and
+/// `bastionApiProvider` with the concrete instances [HomeShell] owns, and
+/// watches [notificationWiringProvider] to activate the needs-input ->
+/// local-notification bridge for as long as this subtree is mounted.
+///
+/// Public (rather than `_`-private) so widget tests can pump it directly
+/// with fake socket/API instances, without driving a real [BastionSocket]
+/// connection through [HomeShell].
+class ConnectedSessionsBody extends StatelessWidget {
+  const ConnectedSessionsBody({
+    super.key,
+    required this.socket,
+    required this.api,
+  });
+
+  final BastionSocket socket;
+  final BastionApi api;
+
+  @override
+  Widget build(BuildContext context) {
+    return ProviderScope(
+      overrides: [
+        bastionSocketProvider.overrideWithValue(socket),
+        bastionApiProvider.overrideWithValue(api),
+      ],
+      child: const _NotificationWiredSessionsList(),
+    );
+  }
+}
+
+class _NotificationWiredSessionsList extends ConsumerWidget {
+  const _NotificationWiredSessionsList();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    ref.watch(notificationWiringProvider);
+    return const SessionsListScreen();
   }
 }
