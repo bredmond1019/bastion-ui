@@ -2,11 +2,43 @@
 type: Log
 title: BastionUI Development Log
 description: Chronological log of work completed for BastionUI.
+timestamp: "2026-07-02T04:36:49Z"
 ---
 
 # Log — BastionUI
 
 *Append-only working log. One dated entry per session. Newest entries at the top.*
+
+---
+
+## [2026-07-02]
+
+### BU.1.A closed: post-review wiring fix + provider-scope visibility bug found by coverage gap-scan
+
+- **What:** Closed out spec `1.A-sessions-list-live-pane-approvals` (`BU.1.A`). The prior `sdlc-flow`
+  run built all 8 tasks correctly in isolation, but its own consolidated review caught that
+  `main.dart` never routed to the new `SessionsListScreen`/`SessionDetailScreen`/
+  `notificationWiringProvider` — dead code, unreachable from the running app. Fixed by wiring
+  `HomeShell` to render the sessions list once connected (commit `6787207`), merged to `main` via
+  `/clean-worktree`. Ran `/code-review low` on the merged diff — no findings (that bug class isn't
+  visible from a diff alone). Then ran `/close-out`: its coverage gap-scan wrote a widget test
+  proving the first fix, and that test caught a second, more serious bug — the app's `Navigator`
+  lives inside `MaterialApp`, an ancestor of `HomeShell`, so a `ProviderScope` override nested
+  inside `HomeShell`'s body (the first fix's approach) is invisible to routes the `Navigator`
+  pushes. Tapping a session card in the real app would have thrown `UnimplementedError` on
+  `SessionDetailScreen`. Fixed by changing `bastionSocketProvider`/`bastionApiProvider` from
+  throw-until-overridden `Provider<T>` to mutable `StateProvider<T?>` set once on the single root
+  `ProviderScope` (commit `bc9d480`) — visible everywhere, including pushed routes. Downstream
+  providers now throw `StateError` if read before connect, preserving the fail-loudly intent. Also
+  patched `README.md`'s empty template placeholder sections (Prerequisites/Setup/Running
+  locally/Tests) and linked `planning/decisions/index.md` (commit `e8c7253`). Final state: 162
+  tests green, `dart format`/`flutter analyze` clean, all merged to `main` (no remote configured
+  for this repo, so nothing was pushed).
+- **Why:** Close out `BU.1.A` cleanly and surface a real correctness bug (provider-scope
+  visibility across `Navigator`-pushed routes) before it shipped, so `BU.2.A`/`BU.3.A` inherit the
+  fix rather than repeating the mistake.
+- **Refs:** `planning/1.A-sessions-list-live-pane-approvals/`; commits `6787207`, `bc9d480`,
+  `e8c7253`.
 
 ---
 
