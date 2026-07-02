@@ -11,6 +11,23 @@ timestamp: "2026-07-02T04:36:49Z"
 
 ---
 
+## [run: 2026-07-02]
+
+Ran the `2.A-dashboard-repo-detail` sdlc-flow across 8 tasks, all passed, review verdict **PASS**. Task 1 added `RepoSummaryDto`/`RepoStatusDto`/`HandoffInfo`/`WorkflowStateDto` (de)serialization mirroring serve-api v0.3 §11 (verifying against the spec directly caught that `current_task` is a JSON int, not the string the task spec's prose table implied). Task 2 added `getRepos()`/`getRepoStatus()`/`getRepoHandoff()`/`getRepoWorkflows()` to `BastionApi`, with `getRepoHandoff()` surfacing a 404/`C002` (no `handoff.md`) as a typed null. Task 3 added `repos_provider.dart` (REST-seeded repo list, pull-to-refresh) and `workflows_provider.dart` (per-repo status+workflows, auto-refetching on `workflow_done` events). Task 4 built the dashboard screen listing every workspace-registry repo with a per-repo `StatusBadge` (idle/in-flight/handoff-pending). Task 5 built the repo-detail screen (parsed status/momentum, handoff markdown via a local `repoHandoffProvider`, per-workflow progress rows). Task 6 added a second notification channel (`notifyWorkflowDone`) bridging `workflow_done` events to local notifications. Task 7 — learning directly from `BU.1.A`'s review FAIL — made wiring its own explicit task: `HomeShell` now has a bottom-nav tab bar (Sessions/Dashboard), routes `/repos/{name}` to `RepoDetailScreen`, activates the new notification wiring, and shows a foreground `SnackBar` on `workflow_done`. Task 8 confirmed all validation commands green with no code changes needed. The consolidated end-of-run review passed on the first attempt — no dead-code wiring gap this time. Two contract-driven deviations from the master-plan skeleton (no `frame.dart` change needed; PR-link acceptance criterion dropped, no field exists in v0.3) were already documented in the spec's own Context Pointers/Notes and are now folded into its Amendment Log. Docs (`docs/index.md`, `docs/architecture.md`, `docs/api-reference.md`, `docs/pages.md`) were created/updated to cover the new dashboard/repo-detail surface. Final state: 222 tests green, `dart format`/`flutter analyze` clean. Next: `BU.3.A` — command palette (inject/spawn), consumes serve-api v0.4 (`bastion` Block I).
+
+```
+09f9c2a chore: flow state — docs
+a1ee5a6 docs: update docs for 2.A-dashboard-repo-detail
+f78c7c5 chore: flow state — task 8 passed
+34830d4 chore: flow state — task 7 passed
+56247df feat: implement 2.A-dashboard-repo-detail-task7
+64d4116 chore: flow state — task 6 passed
+55c2226 feat: implement 2.A-dashboard-repo-detail-task6
+5d64c83 chore: flow state — task 5 passed
+```
+
+---
+
 ## [2026-07-02]
 
 ### BU.1.A closed: post-review wiring fix + provider-scope visibility bug found by coverage gap-scan
