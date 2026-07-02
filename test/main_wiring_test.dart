@@ -97,7 +97,9 @@ void main() {
       addTearDown(api.dispose);
 
       await tester.pumpWidget(
-        MaterialApp(home: ConnectedSessionsBody(socket: socket, api: api)),
+        MaterialApp(
+          home: ConnectedSessionsBody(socket: socket, api: api),
+        ),
       );
       await tester.pump();
 
