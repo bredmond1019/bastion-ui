@@ -533,4 +533,286 @@ void main() {
       );
     });
   });
+
+  group('BastionApi.getRepos', () {
+    test('returns RepoSummaryDto list on 200 with correct JSON', () async {
+      final t = FakeHttpTransport();
+      t.setResponse(
+        statusCode: 200,
+        body: [
+          {
+            'name': 'bastion-ui',
+            'now': 'wiring dashboard',
+            'has_handoff': true,
+          },
+          {'name': 'bastion', 'now': 'serve-api v0.3', 'has_handoff': false},
+        ],
+      );
+      final api = makeApi(t);
+
+      final repos = await api.getRepos();
+
+      expect(repos, hasLength(2));
+      expect(repos[0].name, 'bastion-ui');
+      expect(repos[0].now, 'wiring dashboard');
+      expect(repos[0].hasHandoff, isTrue);
+      expect(repos[1].name, 'bastion');
+      expect(repos[1].hasHandoff, isFalse);
+    });
+
+    test('hits GET /api/repos', () async {
+      final t = FakeHttpTransport();
+      t.setResponse(statusCode: 200, body: []);
+      final api = makeApi(t);
+      await api.getRepos();
+
+      expect(t.calls.single.method, 'GET');
+      expect(t.calls.single.url, 'http://127.0.0.1:4317/api/repos');
+    });
+
+    test('throws FatalAuthError on 401', () async {
+      final t = FakeHttpTransport();
+      t.setResponse(
+        statusCode: 401,
+        body: {'error': 'unauthorized', 'code': 'unauthorized'},
+      );
+      final api = makeApi(t);
+
+      await expectLater(api.getRepos(), throwsA(isA<FatalAuthError>()));
+    });
+
+    test('throws ApiError on non-2xx HTTP error', () async {
+      final t = FakeHttpTransport();
+      t.setResponse(statusCode: 500, body: 'internal server error');
+      final api = makeApi(t);
+
+      await expectLater(api.getRepos(), throwsA(isA<ApiError>()));
+    });
+  });
+
+  group('BastionApi.getRepoStatus', () {
+    test('returns RepoStatusDto on 200 with correct JSON', () async {
+      final t = FakeHttpTransport();
+      t.setResponse(
+        statusCode: 200,
+        body: {
+          'name': 'bastion-ui',
+          'now': 'wiring dashboard',
+          'next': 'repo detail',
+          'blocked': '',
+          'has_handoff': true,
+          'momentum_now': 'a',
+          'momentum_next': 'b',
+          'momentum_blocked': 'c',
+          'momentum_improve': 'd',
+          'momentum_recurring': 'e',
+        },
+      );
+      final api = makeApi(t);
+
+      final status = await api.getRepoStatus('bastion-ui');
+
+      expect(status.name, 'bastion-ui');
+      expect(status.now, 'wiring dashboard');
+      expect(status.next, 'repo detail');
+      expect(status.hasHandoff, isTrue);
+      expect(status.momentumNow, 'a');
+    });
+
+    test('hits GET /api/repos/{name}/status with URL-encoded name', () async {
+      final t = FakeHttpTransport();
+      t.setResponse(
+        statusCode: 200,
+        body: {
+          'name': 'my repo',
+          'now': '',
+          'next': '',
+          'blocked': '',
+          'has_handoff': false,
+          'momentum_now': '',
+          'momentum_next': '',
+          'momentum_blocked': '',
+          'momentum_improve': '',
+          'momentum_recurring': '',
+        },
+      );
+      final api = makeApi(t);
+      await api.getRepoStatus('my repo');
+
+      expect(
+        t.calls.single.url,
+        'http://127.0.0.1:4317/api/repos/my%20repo/status',
+      );
+    });
+
+    test('throws FatalAuthError on 401', () async {
+      final t = FakeHttpTransport();
+      t.setResponse(
+        statusCode: 401,
+        body: {'error': 'unauthorized', 'code': 'unauthorized'},
+      );
+      final api = makeApi(t);
+
+      await expectLater(
+        api.getRepoStatus('bastion-ui'),
+        throwsA(isA<FatalAuthError>()),
+      );
+    });
+
+    test('throws ApiError on 404 when the repo does not exist', () async {
+      final t = FakeHttpTransport();
+      t.setResponse(
+        statusCode: 404,
+        body: {'code': 'C002', 'message': 'repo not found'},
+      );
+      final api = makeApi(t);
+
+      await expectLater(api.getRepoStatus('nosuch'), throwsA(isA<ApiError>()));
+    });
+  });
+
+  group('BastionApi.getRepoHandoff', () {
+    test('returns HandoffInfo on 200 with correct JSON', () async {
+      final t = FakeHttpTransport();
+      t.setResponse(
+        statusCode: 200,
+        body: {'title': 'Handoff — BU.1.A', 'body': '## Summary\n...'},
+      );
+      final api = makeApi(t);
+
+      final handoff = await api.getRepoHandoff('bastion-ui');
+
+      expect(handoff, isNotNull);
+      expect(handoff!.title, 'Handoff — BU.1.A');
+      expect(handoff.body, '## Summary\n...');
+    });
+
+    test('hits GET /api/repos/{name}/handoff', () async {
+      final t = FakeHttpTransport();
+      t.setResponse(statusCode: 200, body: {'title': 't', 'body': 'b'});
+      final api = makeApi(t);
+      await api.getRepoHandoff('bastion-ui');
+
+      expect(
+        t.calls.single.url,
+        'http://127.0.0.1:4317/api/repos/bastion-ui/handoff',
+      );
+    });
+
+    test('returns null on 404 with code C002 (no handoff.md)', () async {
+      final t = FakeHttpTransport();
+      t.setResponse(
+        statusCode: 404,
+        body: {'code': 'C002', 'message': 'no handoff.md'},
+      );
+      final api = makeApi(t);
+
+      final handoff = await api.getRepoHandoff('bastion-ui');
+
+      expect(handoff, isNull);
+    });
+
+    test('throws ApiError on 404 with a different/no code', () async {
+      final t = FakeHttpTransport();
+      t.setResponse(
+        statusCode: 404,
+        body: {'code': 'C999', 'message': 'something else'},
+      );
+      final api = makeApi(t);
+
+      await expectLater(
+        api.getRepoHandoff('bastion-ui'),
+        throwsA(isA<ApiError>()),
+      );
+    });
+
+    test('throws ApiError on 404 with non-JSON body', () async {
+      final t = FakeHttpTransport();
+      t.setResponse(statusCode: 404, body: 'not json');
+      final api = makeApi(t);
+
+      await expectLater(
+        api.getRepoHandoff('bastion-ui'),
+        throwsA(isA<ApiError>()),
+      );
+    });
+
+    test('throws FatalAuthError on 401', () async {
+      final t = FakeHttpTransport();
+      t.setResponse(
+        statusCode: 401,
+        body: {'error': 'unauthorized', 'code': 'unauthorized'},
+      );
+      final api = makeApi(t);
+
+      await expectLater(
+        api.getRepoHandoff('bastion-ui'),
+        throwsA(isA<FatalAuthError>()),
+      );
+    });
+  });
+
+  group('BastionApi.getRepoWorkflows', () {
+    test('returns WorkflowStateDto list on 200 with correct JSON', () async {
+      final t = FakeHttpTransport();
+      t.setResponse(
+        statusCode: 200,
+        body: [
+          {
+            'spec_slug': '2.A-dashboard-repo-detail',
+            'branch': '2.A-dashboard-repo-detail-flow',
+            'status': 'running',
+            'current_task': 2,
+            'started_at': '2026-07-02T10:00:00Z',
+            'updated_at': '2026-07-02T10:15:00Z',
+          },
+        ],
+      );
+      final api = makeApi(t);
+
+      final workflows = await api.getRepoWorkflows('bastion-ui');
+
+      expect(workflows, hasLength(1));
+      expect(workflows[0].specSlug, '2.A-dashboard-repo-detail');
+      expect(workflows[0].status, 'running');
+      expect(workflows[0].currentTask, 2);
+    });
+
+    test('hits GET /api/repos/{name}/workflows', () async {
+      final t = FakeHttpTransport();
+      t.setResponse(statusCode: 200, body: []);
+      final api = makeApi(t);
+      await api.getRepoWorkflows('bastion-ui');
+
+      expect(
+        t.calls.single.url,
+        'http://127.0.0.1:4317/api/repos/bastion-ui/workflows',
+      );
+    });
+
+    test('throws FatalAuthError on 401', () async {
+      final t = FakeHttpTransport();
+      t.setResponse(
+        statusCode: 401,
+        body: {'error': 'unauthorized', 'code': 'unauthorized'},
+      );
+      final api = makeApi(t);
+
+      await expectLater(
+        api.getRepoWorkflows('bastion-ui'),
+        throwsA(isA<FatalAuthError>()),
+      );
+    });
+
+    test('throws ApiError on non-2xx HTTP error', () async {
+      final t = FakeHttpTransport();
+      t.setResponse(statusCode: 500, body: 'internal server error');
+      final api = makeApi(t);
+
+      await expectLater(
+        api.getRepoWorkflows('bastion-ui'),
+        throwsA(isA<ApiError>()),
+      );
+    });
+  });
 }

@@ -13,6 +13,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import '../models/dto.dart';
+import '../models/repo_status_dto.dart';
 import '../models/session_dto.dart';
 
 // ---------------------------------------------------------------------------
@@ -348,6 +349,83 @@ final class BastionApi {
       headers: _defaultHeaders,
     );
     _checkStatus(result.statusCode, result.body);
+  }
+
+  // -------------------------------------------------------------------------
+  // Repo/workflow status REST (v0.3) endpoints — serve-api.md §11
+  // -------------------------------------------------------------------------
+
+  /// `GET /api/repos` — list every workspace-registry repo.
+  ///
+  /// Throws [FatalAuthError] on `401`, [ApiError] on other HTTP errors, or a
+  /// [SocketException] / [HttpException] on network failure.
+  Future<List<RepoSummaryDto>> getRepos() async {
+    final result = await _transport.get(
+      '$_baseUrl/api/repos',
+      headers: _defaultHeaders,
+    );
+    return _decodeList(result.statusCode, result.body, RepoSummaryDto.fromJson);
+  }
+
+  /// `GET /api/repos/{name}/status` — the parsed `status.md` for repo
+  /// [name].
+  ///
+  /// Throws [FatalAuthError] on `401`, [ApiError] on other HTTP errors, or a
+  /// [SocketException] / [HttpException] on network failure.
+  Future<RepoStatusDto> getRepoStatus(String name) async {
+    final encodedName = Uri.encodeComponent(name);
+    final result = await _transport.get(
+      '$_baseUrl/api/repos/$encodedName/status',
+      headers: _defaultHeaders,
+    );
+    return _decode(result.statusCode, result.body, RepoStatusDto.fromJson);
+  }
+
+  /// `GET /api/repos/{name}/handoff` — the parsed `handoff.md` for repo
+  /// [name].
+  ///
+  /// Returns `null` when the repo has no `handoff.md` (a `404` with code
+  /// `C002` — a legitimate, non-error state, not thrown as [ApiError]).
+  ///
+  /// Throws [FatalAuthError] on `401`, [ApiError] on any other HTTP error,
+  /// or a [SocketException] / [HttpException] on network failure.
+  Future<HandoffInfo?> getRepoHandoff(String name) async {
+    final encodedName = Uri.encodeComponent(name);
+    final result = await _transport.get(
+      '$_baseUrl/api/repos/$encodedName/handoff',
+      headers: _defaultHeaders,
+    );
+    if (result.statusCode == 404) {
+      Map<String, dynamic>? json;
+      try {
+        json = jsonDecode(result.body) as Map<String, dynamic>;
+      } catch (_) {
+        json = null;
+      }
+      if (json != null && json['code'] == 'C002') {
+        return null;
+      }
+      throw ApiError(statusCode: result.statusCode, body: result.body);
+    }
+    return _decode(result.statusCode, result.body, HandoffInfo.fromJson);
+  }
+
+  /// `GET /api/repos/{name}/workflows` — every in-flight/completed SDLC
+  /// workflow for repo [name].
+  ///
+  /// Throws [FatalAuthError] on `401`, [ApiError] on other HTTP errors, or a
+  /// [SocketException] / [HttpException] on network failure.
+  Future<List<WorkflowStateDto>> getRepoWorkflows(String name) async {
+    final encodedName = Uri.encodeComponent(name);
+    final result = await _transport.get(
+      '$_baseUrl/api/repos/$encodedName/workflows',
+      headers: _defaultHeaders,
+    );
+    return _decodeList(
+      result.statusCode,
+      result.body,
+      WorkflowStateDto.fromJson,
+    );
   }
 
   // -------------------------------------------------------------------------
