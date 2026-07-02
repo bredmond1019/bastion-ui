@@ -38,16 +38,20 @@ String paneTopic(String sessionName) => 'pane:$sessionName';
 /// current by WS `pane` frames on the `"pane:<name>"` topic.
 final paneProvider = StateNotifierProvider.autoDispose
     .family<PaneNotifier, List<String>, String>((ref, sessionName) {
+      final socket = ref.watch(bastionSocketProvider);
+      final api = ref.watch(bastionApiProvider);
+      if (socket == null || api == null) {
+        throw StateError(
+          'paneProvider read before bastionSocketProvider/bastionApiProvider '
+          'were set — the app shell must connect before mounting a pane view.',
+        );
+      }
       // NB: StateNotifierProvider disposes the returned notifier
       // automatically when the provider itself is disposed — do not also
       // register `ref.onDispose(notifier.dispose)` here, or dispose() runs
       // twice.
-      return PaneNotifier(
-        sessionName: sessionName,
-        socket: ref.watch(bastionSocketProvider),
-        api: ref.watch(bastionApiProvider),
-      );
-    }, dependencies: [bastionSocketProvider, bastionApiProvider]);
+      return PaneNotifier(sessionName: sessionName, socket: socket, api: api);
+    });
 
 /// Owns the `"pane:<name>"` topic subscription, REST seed, and `seq`-ordered
 /// buffer for [paneProvider].

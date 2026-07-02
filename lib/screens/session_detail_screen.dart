@@ -66,6 +66,7 @@ class _SendBarState extends ConsumerState<_SendBar> {
     final text = _controller.text;
     if (text.isEmpty) return;
     final api = ref.read(bastionApiProvider);
+    if (api == null) return;
     _controller.clear();
     try {
       await api.sendKeys(widget.sessionName, text);

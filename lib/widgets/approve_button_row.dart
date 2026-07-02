@@ -65,6 +65,7 @@ class ApproveButtonRow extends ConsumerWidget {
     ApproveKey approveKey,
   ) async {
     final api = ref.read(bastionApiProvider);
+    if (api == null) return;
     try {
       await approveKey.send(api, sessionName);
     } catch (e) {

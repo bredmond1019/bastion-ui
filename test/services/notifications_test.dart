@@ -177,7 +177,7 @@ void main() {
       service = NotificationService(plugin: plugin);
       container = ProviderContainer(
         overrides: [
-          bastionSocketProvider.overrideWithValue(socket),
+          bastionSocketProvider.overrideWith((ref) => socket),
           notificationServiceProvider.overrideWithValue(service),
         ],
       );

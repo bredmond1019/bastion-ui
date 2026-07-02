@@ -32,10 +32,16 @@ const needsInputEvent = 'needs_input';
 /// notification service) never steal events from one another.
 final needsInputEventsProvider = Provider<Stream<EventFrame>>((ref) {
   final socket = ref.watch(bastionSocketProvider);
+  if (socket == null) {
+    throw StateError(
+      'needsInputEventsProvider read before bastionSocketProvider was set — '
+      'the app shell must connect before watching needs-input events.',
+    );
+  }
   return socket.frames
       .where((frame) => frame is EventFrame && frame.event == needsInputEvent)
       .cast<EventFrame>();
-}, dependencies: [bastionSocketProvider]);
+});
 
 // ---------------------------------------------------------------------------
 // Derived per-session flag state
@@ -53,7 +59,7 @@ final needsInputProvider =
       // register `ref.onDispose(notifier.dispose)` here, or dispose() runs
       // twice.
       return NeedsInputNotifier(ref.watch(needsInputEventsProvider));
-    }, dependencies: [needsInputEventsProvider]);
+    });
 
 /// Tracks the current set of sessions with a pending `needs_input` flag.
 class NeedsInputNotifier extends StateNotifier<Set<String>> {

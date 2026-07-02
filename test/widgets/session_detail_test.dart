@@ -163,8 +163,8 @@ void main() {
       wsTransport = t;
       parentContainer = ProviderContainer(
         overrides: [
-          bastionSocketProvider.overrideWithValue(socket),
-          bastionApiProvider.overrideWithValue(api),
+          bastionSocketProvider.overrideWith((ref) => socket),
+          bastionApiProvider.overrideWith((ref) => api),
         ],
       );
       addTearDown(parentContainer.dispose);

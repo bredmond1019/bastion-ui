@@ -121,4 +121,4 @@ final notificationWiringProvider = Provider.autoDispose<void>((ref) {
     unawaited(service.notifyNeedsInput(frame.session));
   });
   ref.onDispose(sub.cancel);
-}, dependencies: [notificationServiceProvider, needsInputEventsProvider]);
+});

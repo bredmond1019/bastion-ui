@@ -133,8 +133,8 @@ void main() {
       );
       container = ProviderContainer(
         overrides: [
-          bastionSocketProvider.overrideWithValue(socket),
-          bastionApiProvider.overrideWithValue(api),
+          bastionSocketProvider.overrideWith((ref) => socket),
+          bastionApiProvider.overrideWith((ref) => api),
         ],
       );
     });
@@ -287,8 +287,8 @@ void main() {
         );
         final localContainer = ProviderContainer(
           overrides: [
-            bastionSocketProvider.overrideWithValue(socket),
-            bastionApiProvider.overrideWithValue(slowApi),
+            bastionSocketProvider.overrideWith((ref) => socket),
+            bastionApiProvider.overrideWith((ref) => slowApi),
           ],
         );
         addTearDown(localContainer.dispose);
@@ -333,8 +333,8 @@ void main() {
         );
         final localContainer = ProviderContainer(
           overrides: [
-            bastionSocketProvider.overrideWithValue(socket),
-            bastionApiProvider.overrideWithValue(api),
+            bastionSocketProvider.overrideWith((ref) => socket),
+            bastionApiProvider.overrideWith((ref) => api),
           ],
         );
 

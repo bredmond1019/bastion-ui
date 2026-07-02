@@ -111,22 +111,20 @@ Future<(BastionSocket, FakeWsTransport)> makeConnectedSocket() async {
 // ---------------------------------------------------------------------------
 
 void main() {
-  group('bastionSocketProvider / bastionApiProvider — unoverridden guards', () {
-    test('bastionSocketProvider throws UnimplementedError when unread', () {
+  group('bastionSocketProvider / bastionApiProvider — unset guards', () {
+    test('bastionSocketProvider/bastionApiProvider default to null', () {
       final container = ProviderContainer();
       addTearDown(container.dispose);
-      expect(
-        () => container.read(bastionSocketProvider),
-        throwsA(isA<UnimplementedError>()),
-      );
+      expect(container.read(bastionSocketProvider), isNull);
+      expect(container.read(bastionApiProvider), isNull);
     });
 
-    test('bastionApiProvider throws UnimplementedError when unread', () {
+    test('sessionsProvider throws StateError when read before connect', () {
       final container = ProviderContainer();
       addTearDown(container.dispose);
       expect(
-        () => container.read(bastionApiProvider),
-        throwsA(isA<UnimplementedError>()),
+        () => container.read(sessionsProvider),
+        throwsA(isA<StateError>()),
       );
     });
   });
@@ -163,8 +161,8 @@ void main() {
       );
       container = ProviderContainer(
         overrides: [
-          bastionSocketProvider.overrideWithValue(socket),
-          bastionApiProvider.overrideWithValue(api),
+          bastionSocketProvider.overrideWith((ref) => socket),
+          bastionApiProvider.overrideWith((ref) => api),
         ],
       );
 
@@ -185,8 +183,8 @@ void main() {
       );
       container = ProviderContainer(
         overrides: [
-          bastionSocketProvider.overrideWithValue(socket),
-          bastionApiProvider.overrideWithValue(api),
+          bastionSocketProvider.overrideWith((ref) => socket),
+          bastionApiProvider.overrideWith((ref) => api),
         ],
       );
 
@@ -208,8 +206,8 @@ void main() {
       );
       container = ProviderContainer(
         overrides: [
-          bastionSocketProvider.overrideWithValue(socket),
-          bastionApiProvider.overrideWithValue(api),
+          bastionSocketProvider.overrideWith((ref) => socket),
+          bastionApiProvider.overrideWith((ref) => api),
         ],
       );
 
@@ -247,8 +245,8 @@ void main() {
         );
         container = ProviderContainer(
           overrides: [
-            bastionSocketProvider.overrideWithValue(socket),
-            bastionApiProvider.overrideWithValue(slowApi),
+            bastionSocketProvider.overrideWith((ref) => socket),
+            bastionApiProvider.overrideWith((ref) => slowApi),
           ],
         );
 
@@ -291,8 +289,8 @@ void main() {
       // conflicting with the shared `tearDown`'s dispose of `container`.
       final localContainer = ProviderContainer(
         overrides: [
-          bastionSocketProvider.overrideWithValue(socket),
-          bastionApiProvider.overrideWithValue(api),
+          bastionSocketProvider.overrideWith((ref) => socket),
+          bastionApiProvider.overrideWith((ref) => api),
         ],
       );
 

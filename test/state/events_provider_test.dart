@@ -85,7 +85,7 @@ void main() {
     socket = s;
     transport = t;
     container = ProviderContainer(
-      overrides: [bastionSocketProvider.overrideWithValue(socket)],
+      overrides: [bastionSocketProvider.overrideWith((ref) => socket)],
     );
   });
 
