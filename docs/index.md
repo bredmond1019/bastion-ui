@@ -14,6 +14,6 @@ related: [architecture, api-reference, pages]
 
 | Doc | Contents |
 |---|---|
-| `architecture.md` | Module map, key types, data flow (connection lifecycle, REST+WS seed/live pattern, routing, dashboard/repo-detail flow) |
-| `api-reference.md` | `BastionApi` REST methods, `BastionSocket` WS frames/topics, DTOs |
-| `pages.md` | Screens, routes, and the providers/widgets each one wires together |
+| [`architecture.md`](architecture.md) | Module map, key types, data flow (connection lifecycle, REST+WS seed/live pattern, routing, dashboard/repo-detail flow) |
+| [`api-reference.md`](api-reference.md) | `BastionApi` REST methods, `BastionSocket` WS frames/topics, DTOs |
+| [`pages.md`](pages.md) | Screens, routes, and the providers/widgets each one wires together |
