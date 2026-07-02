@@ -16,24 +16,33 @@ Flutter mobile Surface (Android phone + tablet) for remotely operating the whole
 
 ## Prerequisites
 
-<!-- What must be installed (runtime, package manager, services). -->
+- Flutter SDK (Dart `^3.12.2`, per `pubspec.yaml`)
+- A running `bastion serve` instance reachable over Tailscale (see the `bastion` repo's
+  `docs/serve-api.md`) — this app is a thin client with no backend of its own
+- An Android device/emulator (or `flutter run -d <device>` target) for live end-to-end use
 
 ## Setup
 
 ```bash
-# Numbered steps from zero to running.
+flutter pub get   # install dependencies
 ```
+
+On first launch, open the Settings screen (gear icon) and enter the `bastion serve` host,
+port, and bearer token. The token is stored via `flutter_secure_storage`.
 
 ## Running locally
 
 ```bash
-# The exact commands from CLAUDE.md.
+flutter run                # run on a connected device/emulator
+flutter build apk          # build an Android APK
 ```
 
 ## Tests
 
 ```bash
-# One-liner to run the test suite.
+dart format --output=none --set-exit-if-changed . # format check (gating)
+flutter analyze                                    # static analysis (gating)
+flutter test                                        # unit + widget tests (gating)
 ```
 
 ## Directory map
@@ -53,6 +62,7 @@ bastion-ui/
 | [planning/master-plan.md](planning/master-plan.md) | Strategy + phase specifications |
 | [planning/status.md](planning/status.md) | Current progress |
 | [planning/harness.json](planning/harness.json) | SDLC validation/UI-test config (see `harness.examples.md`) |
+| [planning/decisions/index.md](planning/decisions/index.md) | Settled implementation decisions (append-only) |
 
 ---
 
