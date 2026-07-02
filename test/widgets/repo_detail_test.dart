@@ -1,0 +1,154 @@
+// Widget tests for RepoDetailScreen.
+//
+// Overrides `repoWorkflowsProvider` (a fake StateNotifier, mirroring
+// `dashboard_test.dart`'s override style) and `repoHandoffProvider` directly
+// with a resolved Future — no real socket/API involved.
+
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_test/flutter_test.dart';
+
+import 'package:bastion_ui/models/repo_status_dto.dart';
+import 'package:bastion_ui/screens/repo_detail_screen.dart';
+import 'package:bastion_ui/state/workflows_provider.dart';
+import 'package:bastion_ui/widgets/workflow_progress.dart';
+
+// ---------------------------------------------------------------------------
+// Fakes
+// ---------------------------------------------------------------------------
+
+class _FakeRepoWorkflowsNotifier extends StateNotifier<RepoWorkflowsState>
+    implements RepoWorkflowsNotifier {
+  _FakeRepoWorkflowsNotifier(super.state, {required this.repoName});
+
+  @override
+  final String repoName;
+}
+
+RepoStatusDto _status({bool hasHandoff = false}) => RepoStatusDto(
+  name: 'alpha',
+  now: 'shipping task 5',
+  next: 'wire dashboard',
+  blocked: '',
+  hasHandoff: hasHandoff,
+  momentumNow: 'momentum now',
+  momentumNext: 'momentum next',
+  momentumBlocked: '',
+  momentumImprove: 'momentum improve',
+  momentumRecurring: 'momentum recurring',
+);
+
+WorkflowStateDto _workflow({String status = 'running'}) => WorkflowStateDto(
+  specSlug: '2.A-dashboard-repo-detail',
+  branch: '2.A-dashboard-repo-detail-flow',
+  status: status,
+  currentTask: 5,
+  startedAt: '2026-07-02T10:00:00Z',
+  updatedAt: '2026-07-02T10:15:00Z',
+);
+
+Widget _buildScreen({
+  required RepoWorkflowsState workflowsState,
+  HandoffInfo? handoff,
+  String repoName = 'alpha',
+}) {
+  return ProviderScope(
+    overrides: [
+      repoWorkflowsProvider(repoName).overrideWith(
+        (ref) => _FakeRepoWorkflowsNotifier(workflowsState, repoName: repoName),
+      ),
+      repoHandoffProvider(
+        repoName,
+      ).overrideWith((ref) => Future.value(handoff)),
+    ],
+    child: MaterialApp(home: RepoDetailScreen(repoName: repoName)),
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
+
+void main() {
+  group('RepoDetailScreen', () {
+    testWidgets('renders the parsed status fields', (tester) async {
+      await tester.pumpWidget(
+        _buildScreen(
+          workflowsState: RepoWorkflowsState(
+            status: _status(),
+            workflows: const [],
+            loading: false,
+          ),
+        ),
+      );
+      await tester.pump();
+
+      expect(find.text('shipping task 5'), findsOneWidget);
+      expect(find.text('wire dashboard'), findsOneWidget);
+      expect(find.text('momentum now'), findsOneWidget);
+      expect(find.byKey(const ValueKey('repo-status-table')), findsOneWidget);
+    });
+
+    testWidgets('renders handoff markdown body when present', (tester) async {
+      await tester.pumpWidget(
+        _buildScreen(
+          workflowsState: RepoWorkflowsState(
+            status: _status(hasHandoff: true),
+            workflows: const [],
+            loading: false,
+          ),
+          handoff: const HandoffInfo(
+            title: 'Handoff — BU.2.A',
+            body: '## Summary\nDone with task 5.',
+          ),
+        ),
+      );
+      await tester.pump();
+
+      expect(
+        find.byKey(const ValueKey('repo-handoff-section')),
+        findsOneWidget,
+      );
+      expect(find.text('Handoff — BU.2.A'), findsOneWidget);
+      expect(find.byKey(const ValueKey('markdown-view-body')), findsOneWidget);
+    });
+
+    testWidgets('omits the handoff section when has_handoff is false', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        _buildScreen(
+          workflowsState: RepoWorkflowsState(
+            status: _status(hasHandoff: false),
+            workflows: const [],
+            loading: false,
+          ),
+        ),
+      );
+      await tester.pump();
+
+      expect(find.byKey(const ValueKey('repo-handoff-section')), findsNothing);
+      expect(find.byKey(const ValueKey('markdown-view-body')), findsNothing);
+    });
+
+    testWidgets('renders a workflow progress row per entry', (tester) async {
+      await tester.pumpWidget(
+        _buildScreen(
+          workflowsState: RepoWorkflowsState(
+            status: _status(),
+            workflows: [
+              _workflow(status: 'running'),
+              _workflow(status: 'done'),
+            ],
+            loading: false,
+          ),
+        ),
+      );
+      await tester.pump();
+
+      expect(find.byType(WorkflowProgress), findsNWidgets(2));
+      expect(find.textContaining('task 5 — running'), findsOneWidget);
+      expect(find.textContaining('task 5 — done'), findsOneWidget);
+    });
+  });
+}
