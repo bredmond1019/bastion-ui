@@ -1,11 +1,14 @@
-/// WS frame envelope mirroring serve-api.md §5 (v0).
+/// WS frame envelope mirroring serve-api.md §5 (v0) and §7-9 (v0.2 WS-hub).
 ///
 /// The envelope is `{"kind": "<snake_case>", "payload": <any JSON>}`.
-/// Known v0 kinds: `echo` and `error`. Unknown kinds are represented
-/// by [UnknownFrame] so a v0.1+ server frame never crashes the client.
+/// Known v0 kinds: `echo` and `error`. Known v0.2 server->client kinds:
+/// `sessions`, `pane`, `event`. Unknown kinds are represented by
+/// [UnknownFrame] so a v0.1+ server frame never crashes the client.
 ///
 /// This file is pure Dart — no Flutter or socket imports.
 library;
+
+import 'session_dto.dart';
 
 // ---------------------------------------------------------------------------
 // Frame envelope
@@ -42,6 +45,51 @@ sealed class BastionFrame {
         return MalformedFrame(
           raw: json,
           reason: '"error" frame payload is not a JSON object',
+        );
+      case 'sessions':
+        if (payload is Map<String, dynamic>) {
+          final rawSessions = payload['sessions'];
+          if (rawSessions is List) {
+            return SessionsFrame(
+              sessions: rawSessions
+                  .whereType<Map<String, dynamic>>()
+                  .map(SessionDto.fromJson)
+                  .toList(),
+            );
+          }
+        }
+        return MalformedFrame(
+          raw: json,
+          reason: '"sessions" frame payload is missing "sessions" list',
+        );
+      case 'pane':
+        if (payload is Map<String, dynamic>) {
+          final session = payload['session'];
+          final seq = payload['seq'];
+          final rawLines = payload['lines'];
+          if (session is String && seq is num && rawLines is List) {
+            return PaneFrame(
+              session: session,
+              seq: seq.toInt(),
+              lines: rawLines.map((e) => e.toString()).toList(),
+            );
+          }
+        }
+        return MalformedFrame(
+          raw: json,
+          reason: '"pane" frame payload missing "session"/"seq"/"lines"',
+        );
+      case 'event':
+        if (payload is Map<String, dynamic>) {
+          final session = payload['session'];
+          final event = payload['event'];
+          if (session is String && event is String) {
+            return EventFrame(session: session, event: event, extra: payload);
+          }
+        }
+        return MalformedFrame(
+          raw: json,
+          reason: '"event" frame payload missing "session"/"event"',
         );
       default:
         return UnknownFrame(kind: rawKind, payload: payload);
@@ -81,6 +129,111 @@ final class ErrorFrame extends BastionFrame {
 
   @override
   Map<String, dynamic> toJson() => {'kind': kind, 'payload': payload.toJson()};
+}
+
+// ---------------------------------------------------------------------------
+// v0.2 WS-hub server->client kinds
+// ---------------------------------------------------------------------------
+
+/// `sessions` — full snapshot of live sessions, pushed on topic `"sessions"`.
+final class SessionsFrame extends BastionFrame {
+  @override
+  String get kind => 'sessions';
+
+  final List<SessionDto> sessions;
+
+  const SessionsFrame({required this.sessions});
+
+  @override
+  Map<String, dynamic> toJson() => {
+    'kind': kind,
+    'payload': {'sessions': sessions.map((s) => s.toJson()).toList()},
+  };
+}
+
+/// `pane` — an incremental pane update, pushed on topic `"pane:<name>"`.
+final class PaneFrame extends BastionFrame {
+  @override
+  String get kind => 'pane';
+
+  final String session;
+  final int seq;
+  final List<String> lines;
+
+  const PaneFrame({
+    required this.session,
+    required this.seq,
+    required this.lines,
+  });
+
+  @override
+  Map<String, dynamic> toJson() => {
+    'kind': kind,
+    'payload': {'session': session, 'seq': seq, 'lines': lines},
+  };
+}
+
+/// `event` — a session lifecycle event (e.g. `needs_input`).
+///
+/// [extra] is the raw JSON payload map (including `session`/`event`) so
+/// future event fields never break decoding.
+final class EventFrame extends BastionFrame {
+  @override
+  String get kind => 'event';
+
+  final String session;
+  final String event;
+  final Map<String, dynamic> extra;
+
+  const EventFrame({
+    required this.session,
+    required this.event,
+    required this.extra,
+  });
+
+  @override
+  Map<String, dynamic> toJson() => {'kind': kind, 'payload': extra};
+}
+
+// ---------------------------------------------------------------------------
+// v0.2 WS-hub client->server encoders
+// ---------------------------------------------------------------------------
+
+/// Client->server frame encoders. These are plain functions (not
+/// [BastionFrame] subtypes, since the client never needs to decode its own
+/// outbound frames) that produce the wire JSON map for `jsonEncode`.
+class ClientFrames {
+  const ClientFrames._();
+
+  /// `subscribe {topic}` — subscribe to `"sessions"` or `"pane:<name>"`.
+  static Map<String, dynamic> subscribe(String topic) => {
+    'kind': 'subscribe',
+    'payload': {'topic': topic},
+  };
+
+  /// `unsubscribe {topic}`.
+  static Map<String, dynamic> unsubscribe(String topic) => {
+    'kind': 'unsubscribe',
+    'payload': {'topic': topic},
+  };
+
+  /// `send {session, keys}` — send a literal key sequence to a session.
+  static Map<String, dynamic> send({
+    required String session,
+    required String keys,
+  }) => {
+    'kind': 'send',
+    'payload': {'session': session, 'keys': keys},
+  };
+
+  /// `send_key {session, key}` — send a single named key to a session.
+  static Map<String, dynamic> sendKey({
+    required String session,
+    required String key,
+  }) => {
+    'kind': 'send_key',
+    'payload': {'session': session, 'key': key},
+  };
 }
 
 // ---------------------------------------------------------------------------
