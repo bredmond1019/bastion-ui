@@ -1,6 +1,6 @@
 // Widget tests for main.dart's app-shell wiring.
 //
-// Guards two bugs found during BU.1.A close-out:
+// Guards bugs found during BU.1.A close-out, extended in BU.2.A Task 7:
 //   1. HomeShell's body must actually reach SessionsListScreen once
 //      connected (screens existed and were unit-tested in isolation, but
 //      nothing routed to them from the running app).
@@ -11,6 +11,10 @@
 //      to pushed routes. Overriding the shared, mutable
 //      bastionSocketProvider/bastionApiProvider on the single root
 //      ProviderScope (as main.dart does) fixes this.
+//   3. (BU.2.A) DashboardScreen must be reachable the same way, and tapping
+//      a repo row must push RepoDetailScreen via the same route-generation
+//      mechanism (`/repos/{name}`) — this is the task that closes the loop
+//      BU.1.A initially missed, applied to the dashboard/repo-detail pair.
 
 import 'dart:async';
 
@@ -19,6 +23,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:bastion_ui/main.dart';
+import 'package:bastion_ui/screens/dashboard_screen.dart';
+import 'package:bastion_ui/screens/repo_detail_screen.dart';
 import 'package:bastion_ui/screens/session_detail_screen.dart';
 import 'package:bastion_ui/screens/sessions_list_screen.dart';
 import 'package:bastion_ui/services/bastion_api.dart';
@@ -50,8 +56,11 @@ class _FakeWsTransport implements WsTransport {
   }
 }
 
-/// Serves `getSessions` -> one session named `alpha`, and `getPane` -> a
-/// one-line buffer, so both the list and detail screens have content.
+/// Serves `getSessions` -> one session named `alpha`, `getPane` -> a
+/// one-line buffer, and `getRepos`/`getRepoStatus`/`getRepoHandoff`/
+/// `getRepoWorkflows` -> one repo named `bastion-ui` with no handoff and no
+/// in-flight workflows, so the sessions, dashboard, and repo-detail screens
+/// all have content.
 class _FakeHttpTransport implements HttpTransport {
   @override
   Future<({int statusCode, String body})> get(
@@ -60,6 +69,29 @@ class _FakeHttpTransport implements HttpTransport {
   }) async {
     if (url.contains('/pane')) {
       return (statusCode: 200, body: '{"session_name":"alpha","lines":["hi"]}');
+    }
+    if (url.contains('/repos/') && url.endsWith('/status')) {
+      return (
+        statusCode: 200,
+        body:
+            '{"name":"bastion-ui","now":"wiring dashboard","next":"","'
+            'blocked":"","has_handoff":false,"momentum_now":"","'
+            'momentum_next":"","momentum_blocked":"","momentum_improve":"",'
+            '"momentum_recurring":""}',
+      );
+    }
+    if (url.contains('/repos/') && url.endsWith('/handoff')) {
+      return (statusCode: 404, body: '{"code":"C002"}');
+    }
+    if (url.contains('/repos/') && url.endsWith('/workflows')) {
+      return (statusCode: 200, body: '[]');
+    }
+    if (url.endsWith('/api/repos')) {
+      return (
+        statusCode: 200,
+        body:
+            '[{"name":"bastion-ui","now":"wiring dashboard","has_handoff":false}]',
+      );
     }
     return (statusCode: 200, body: '[{"name":"alpha","state":"running"}]');
   }
@@ -89,6 +121,13 @@ Route<void>? _generateRoute(RouteSettings settings) {
     );
     return MaterialPageRoute<void>(
       builder: (_) => SessionDetailScreen(sessionName: sessionName),
+      settings: settings,
+    );
+  }
+  if (name != null && name.startsWith('/repos/')) {
+    final repoName = Uri.decodeComponent(name.substring('/repos/'.length));
+    return MaterialPageRoute<void>(
+      builder: (_) => RepoDetailScreen(repoName: repoName),
       settings: settings,
     );
   }
@@ -163,6 +202,58 @@ void main() {
       expect(find.text('alpha'), findsWidgets); // detail screen's AppBar title
     },
   );
+
+  testWidgets('DashboardScreen and a pushed RepoDetailScreen both see the live '
+      'socket/API set on the root ProviderScope (BU.2.A Task 7)', (
+    tester,
+  ) async {
+    final socket = BastionSocket(
+      host: 'test-host',
+      port: 4317,
+      token: 'test-token',
+      transportFactory: (uri, {headers}) => _FakeWsTransport(),
+    );
+    addTearDown(socket.dispose);
+    final api = BastionApi(
+      host: 'test-host',
+      port: 4317,
+      token: 'test-token',
+      transport: _FakeHttpTransport(),
+    );
+    addTearDown(api.dispose);
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          bastionSocketProvider.overrideWith((ref) => socket),
+          bastionApiProvider.overrideWith((ref) => api),
+        ],
+        child: MaterialApp(
+          home: const DashboardScreen(),
+          onGenerateRoute: _generateRoute,
+        ),
+      ),
+    );
+    await tester.pump();
+
+    // The dashboard screen itself is reachable and REST-seeded.
+    expect(find.text('Dashboard'), findsOneWidget);
+    expect(find.text('bastion-ui'), findsOneWidget);
+
+    // Tapping the repo row pushes RepoDetailScreen via the app's
+    // Navigator — a route this test builds outside DashboardScreen's own
+    // widget tree, exactly as BastionApp's Navigator sits above
+    // HomeShell.
+    await tester.tap(find.text('bastion-ui'));
+    await tester.pumpAndSettle();
+
+    // If bastionSocketProvider/bastionApiProvider weren't visible to the
+    // pushed route, workflowsProvider/repoHandoffProvider would throw a
+    // StateError here.
+    expect(tester.takeException(), isNull);
+    expect(find.text('bastion-ui'), findsWidgets); // detail AppBar title
+    expect(find.text('wiring dashboard'), findsOneWidget); // status "now"
+  });
 }
 
 /// Minimal notifier seeded to disconnected/unconfigured state — avoids
