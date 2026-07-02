@@ -10,6 +10,23 @@ description: Chronological log of work completed for BastionUI.
 
 ---
 
+## [run: 2026-07-02]
+
+Ran the `1.A-sessions-list-live-pane-approvals` sdlc-flow across 8 tasks, all of which passed individually. Task 1 added `SessionDto`/`PaneDto` models plus typed v0.2 WS-hub frame kinds (`SessionsFrame`, `PaneFrame`, `EventFrame`) and client→server encoders (subscribe/unsubscribe/send/send_key). Task 2 built out the v0.1 session REST surface on `BastionApi` (getSessions, getPane, sendKeys, sendKey, createSession, deleteSession), extending `HttpTransport` with POST/DELETE. Task 3 added `sessions_provider.dart` (REST-seeded, WS-kept-live sessions list) and `events_provider.dart` (needs-input event stream + per-session flag set), injected via placeholder providers since `main.dart` was reserved for Task 7. Task 4 added a per-session `pane_provider.dart` family that REST-seeds and WS-subscribes a live pane buffer with seq-ordered updates and autoDispose unsubscribe. Task 5 built the sessions-list screen with live session cards (running/idle badge, needs-input flag) and tap navigation toward a session-detail route. Task 6 built the session-detail screen (auto-scrolling live pane, free-text send bar, quick-approve button row mapped to sendKeys/sendKey). Task 7 added a `NotificationService` wrapping `flutter_local_notifications` and a `notificationWiringProvider` bridging needs-input events to local notifications, initialized in `main.dart` — but deliberately not wired into `HomeShell.build()` because the sessions/pane/events providers weren't yet mounted into the app shell. Task 8 was a clean validation-only pass (format/analyze/test all green). The end-of-run review returned a **FAIL** verdict and the flow bailed: entire spec's deliverables (sessions list, session detail, notification bridge) are unreachable from the running app — `main.dart`/`HomeShell` was never updated to route to them, so the app's actual behavior is unchanged from before the spec despite all new code existing and passing isolated tests. Each task individually deferred the `main.dart`/`HomeShell` wiring to a later task's scope, and no task ever closed that loop, leaving four fully-tested but dead-code deliverables. Next: a follow-up task/spec to wire `SessionsListScreen`, `SessionDetailScreen`, and `notificationWiringProvider` into `main.dart`/`HomeShell` so the app actually routes to and activates them, then re-run review.
+
+```
+5598703 chore: flow state — review FAIL — bail
+1564472 chore: flow state — task 8 passed
+e4ed443 chore: flow state — task 7 passed
+3a5ea8a feat: implement 1.A-sessions-list-live-pane-approvals-task7
+b797e4b chore: flow state — task 6 passed
+d9b41b8 feat: implement 1.A-sessions-list-live-pane-approvals-task6
+2fb852c chore: flow state — task 5 passed
+ae94f7c feat: implement 1.A-sessions-list-live-pane-approvals-task5
+```
+
+---
+
 ## 2026-06-27
 
 Completed spec `0.A-app-foundation` (Phase 0, Block A) across 7 tasks — all passed, review verdict PASS. Task 1 scaffolded the Flutter Android app (`com.bastionui/bastion_ui`) with riverpod, web_socket_channel, flutter_secure_storage, flutter_markdown, and flutter_local_notifications, replacing the generated `main.dart` with a `ProviderScope` root. Task 2 built the pure-Dart contract-mirroring model layer: a sealed `BastionFrame` hierarchy (`echo`, `error`, `unknown`, `malformed`) and v0 DTOs (`HealthDto`, `ErrorPayload`), with 22 round-trip unit tests. Task 3 added the secure connection provider (host/port/token all in `flutter_secure_storage`) and a settings screen with field validation. Task 4 implemented `BastionSocket` — a `WsTransport`-abstracted WebSocket service with a typed frame stream, sync status stream, capped exponential-backoff reconnect, and fatal auth detection, proven by 14 unit tests against a fake transport. Task 5 delivered `BastionApi` — a REST client with bearer auth, `GET /health → HealthDto`, typed `FatalAuthError` on 401, and 11 unit tests. Task 6 wired up the `ConnectionBanner` widget (live status strip), integrated `HomeShell` into `main.dart` for socket lifecycle management and settings routing, bringing total test count to 69 green. Task 7 was validation-only: `dart format`, `flutter analyze`, and `flutter test` all clean. Next: Phase 1 Block A (session control screens + approve buttons) — blocked until `bastion` ships serve-api v0.1 (Block D) and v0.2 (Block E).
