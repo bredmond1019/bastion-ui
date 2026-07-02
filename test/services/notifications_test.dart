@@ -105,6 +105,21 @@ String eventFrameJson(String session, String event) => jsonEncode({
   'payload': {'session': session, 'event': event},
 });
 
+String workflowDoneEventJson(
+  String repo, {
+  String specSlug = '2.A-dashboard-repo-detail',
+  String status = 'done',
+}) => jsonEncode({
+  'kind': 'event',
+  'payload': {
+    'session': '',
+    'event': 'workflow_done',
+    'repo': repo,
+    'spec_slug': specSlug,
+    'status': status,
+  },
+});
+
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
@@ -157,6 +172,48 @@ void main() {
 
       await service.notifyNeedsInput('sess-a');
       await service.notifyNeedsInput('sess-b');
+
+      expect(plugin.shown[0].id, isNot(plugin.shown[1].id));
+    });
+
+    test(
+      'notifyWorkflowDone() shows a notification naming the repo/spec/status',
+      () async {
+        final plugin = _FakePlugin();
+        final service = NotificationService(plugin: plugin);
+
+        await service.notifyWorkflowDone(
+          'bastion-ui',
+          '2.A-dashboard-repo-detail',
+          'done',
+        );
+
+        expect(plugin.shown, hasLength(1));
+        expect(plugin.shown.single.title, contains('done'));
+        expect(plugin.shown.single.body, contains('bastion-ui'));
+        expect(plugin.shown.single.body, contains('2.A-dashboard-repo-detail'));
+      },
+    );
+
+    test('repeat workflow-done notifications for the same repo+spec reuse the '
+        'same id (replace, not stack)', () async {
+      final plugin = _FakePlugin();
+      final service = NotificationService(plugin: plugin);
+
+      await service.notifyWorkflowDone('bastion-ui', 'spec-a', 'done');
+      await service.notifyWorkflowDone('bastion-ui', 'spec-a', 'blocked');
+
+      expect(plugin.shown, hasLength(2));
+      expect(plugin.shown[0].id, plugin.shown[1].id);
+    });
+
+    test('different repo+spec pairs get different workflow-done notification '
+        'ids', () async {
+      final plugin = _FakePlugin();
+      final service = NotificationService(plugin: plugin);
+
+      await service.notifyWorkflowDone('repo-a', 'spec-a', 'done');
+      await service.notifyWorkflowDone('repo-b', 'spec-a', 'done');
 
       expect(plugin.shown[0].id, isNot(plugin.shown[1].id));
     });
@@ -227,6 +284,82 @@ void main() {
       await pump();
 
       transport.addMessage(eventFrameJson('sess-b', 'needs_input'));
+      await pump();
+
+      expect(plugin.shown, isEmpty);
+    });
+  });
+
+  group('workflowDoneNotificationWiringProvider', () {
+    late BastionSocket socket;
+    late _FakeWsTransport transport;
+    late _FakePlugin plugin;
+    late NotificationService service;
+    late ProviderContainer container;
+
+    setUp(() async {
+      final (s, t) = await makeConnectedSocket();
+      socket = s;
+      transport = t;
+      plugin = _FakePlugin();
+      service = NotificationService(plugin: plugin);
+      container = ProviderContainer(
+        overrides: [
+          bastionSocketProvider.overrideWith((ref) => socket),
+          notificationServiceProvider.overrideWithValue(service),
+        ],
+      );
+    });
+
+    tearDown(() async {
+      container.dispose();
+      await socket.dispose();
+    });
+
+    test(
+      'fires a notification for each workflow_done event once watched',
+      () async {
+        container.read(
+          workflowDoneNotificationWiringProvider,
+        ); // activate the bridge
+
+        transport.addMessage(workflowDoneEventJson('bastion-ui'));
+        await pump();
+
+        expect(plugin.shown, hasLength(1));
+        expect(plugin.shown.single.body, contains('bastion-ui'));
+      },
+    );
+
+    test('does nothing before the provider is watched', () async {
+      transport.addMessage(workflowDoneEventJson('bastion-ui'));
+      await pump();
+
+      expect(plugin.shown, isEmpty);
+    });
+
+    test('ignores non-workflow_done events', () async {
+      container.read(workflowDoneNotificationWiringProvider);
+
+      transport.addMessage(eventFrameJson('sess-a', 'needs_input'));
+      await pump();
+
+      expect(plugin.shown, isEmpty);
+    });
+
+    test('stops firing once the last watcher unsubscribes', () async {
+      final sub = container.listen(
+        workflowDoneNotificationWiringProvider,
+        (prev, next) {},
+      );
+      await pump();
+
+      // Closing the last listener on an autoDispose provider tears down its
+      // socket subscription (see NotificationService's `ref.onDispose`).
+      sub.close();
+      await pump();
+
+      transport.addMessage(workflowDoneEventJson('bastion-ui'));
       await pump();
 
       expect(plugin.shown, isEmpty);
