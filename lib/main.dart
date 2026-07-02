@@ -12,11 +12,30 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'screens/settings_screen.dart';
 import 'services/bastion_socket.dart';
+import 'services/notifications.dart';
 import 'state/connection_provider.dart';
 import 'widgets/connection_banner.dart';
 
-void main() {
-  runApp(const ProviderScope(child: BastionApp()));
+Future<void> main() async {
+  // Required before any platform-channel call (notifications init below)
+  // runs ahead of runApp().
+  WidgetsFlutterBinding.ensureInitialized();
+
+  // Initialize the local-notifications plugin once at startup, then hand the
+  // already-initialized service into the provider tree via an override so
+  // `notificationWiringProvider` (wired up wherever the sessions/events
+  // state is watched) can fire needs-input alerts without further setup.
+  final notificationService = NotificationService();
+  await notificationService.initialize();
+
+  runApp(
+    ProviderScope(
+      overrides: [
+        notificationServiceProvider.overrideWithValue(notificationService),
+      ],
+      child: const BastionApp(),
+    ),
+  );
 }
 
 /// Root application widget.
