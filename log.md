@@ -2,12 +2,41 @@
 type: Log
 title: BastionUI Development Log
 description: Chronological log of work completed for BastionUI.
-timestamp: "2026-07-02T09:54:31Z"
+timestamp: "2026-07-07T00:00:00Z"
 ---
 
 # Log — BastionUI
 
 *Append-only working log. One dated entry per session. Newest entries at the top.*
+
+---
+
+## [2026-07-07]
+
+### BU.ticket.ws-debounce closed: WebSocket state-stream debounce
+
+- **What:** Ran `/sdlc-task ticket-ws-debounce` in place on `main` (no worktree) against
+  `planning/ticket-ws-debounce/tasks.md`. All 5 tasks passed: added `rxdart: ^0.28.0` to
+  `pubspec.yaml` (`822be72`); applied `.debounceTime(~150ms)` (trailing) to
+  `workflows_provider.dart`, `pane_provider.dart`, and `sessions_provider.dart`, each filtering to
+  its own repo/session/topic before debouncing, while leaving `connection_provider.dart`
+  undebounced with an explanatory comment (`705fa60`); documented (comment-only) that
+  `needsInputEventsProvider` (`events_provider.dart`) is deliberately never debounced (`14d01a6`);
+  added `test/state/ws_debounce_test.dart` using `fake_async` asserting burst coalescing, spaced
+  events each emitting, and `needsInput` events never dropped (`cd0f5ec`); final validation task
+  green with no code changes. Then ran `/close-out`: `dart format`, `flutter analyze`, `flutter
+  test` (225 tests, all green), emoji gate all pass; coverage scan found no blocking gaps;
+  `/code-review low` on the diff since `1370ca0` found no issues; patched
+  `docs/architecture.md`'s "REST + WS seed/live pattern" section documenting the new debounce
+  behavior and the `needsInputEventsProvider` exclusion. `planning/state.json`'s
+  `BU.ticket.ws-debounce` block flipped `open` → `closed`.
+- **Why:** Standalone performance ticket (queued in the Tickets track) to stop WebSocket
+  state-refresh streams thrashing Riverpod rebuilds under rapid pane switching / event floods,
+  while carefully never debouncing discrete `needsInput` approval prompts. Picked up because the
+  plan-of-record block `BU.3.A` (command palette) remains blocked on `bastion` shipping serve-api
+  v0.4 (`BA.11.E` not yet built, verified 2026-07-02), so this ticket was available unblocked
+  work.
+- **Refs:** `planning/ticket-ws-debounce/tasks.md`
 
 ---
 

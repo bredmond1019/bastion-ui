@@ -88,6 +88,13 @@ matching WS `event` frame (repo workflows — there is no WS push for the repo l
 itself). A boolean guard (e.g. `_sawWsSnapshot`) ensures a slower REST response never
 overwrites state a faster WS frame already updated.
 
+`sessionsProvider`, `paneProvider`, and `repoWorkflowsProvider` filter their WS stream to
+their own topic/session/repo, then apply rxdart `.debounceTime(~150ms)` (trailing) before
+the notifier applies the frame — a burst of high-frequency frames coalesces to the single
+latest value instead of thrashing a rebuild per frame (`BU.ticket.ws-debounce`).
+`needsInputEventsProvider` (`events_provider.dart`) is a discrete one-shot prompt stream and
+is deliberately left undebounced so no `needs_input` event is ever dropped or delayed.
+
 ### Routing
 
 `BastionApp.onGenerateRoute` handles two dynamic route prefixes:
