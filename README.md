@@ -18,7 +18,7 @@ Flutter mobile Surface (Android phone + tablet) for remotely operating the whole
 
 - Flutter SDK (Dart `^3.12.2`, per `pubspec.yaml`)
 - A running `bastion serve` instance reachable over Tailscale (see the `bastion` repo's
-  `docs/serve-api.md`) — this app is a thin client with no backend of its own
+  [serve-api docs](https://github.com/bredmond1019/bastion/blob/main/docs/serve-api.md)) — this app is a thin client with no backend of its own
 - An Android device/emulator (or `flutter run -d <device>` target) for live end-to-end use
 
 ## Setup
