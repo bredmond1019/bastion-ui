@@ -64,6 +64,14 @@ bastion-ui/
 | [planning/harness.json](planning/harness.json) | SDLC validation/UI-test config (see `harness.examples.md`) |
 | [planning/decisions/index.md](planning/decisions/index.md) | Settled implementation decisions (append-only) |
 
+## Roadmap / Known limitations
+
+Upcoming phases in the Bastion Consolidation Program ([master-plan](https://github.com/bredmond1019/bastion-os/tree/main)):
+
+- **Command Palette (`BU.3.A`)**: Inject/spawn actions directly from the app so the pager is no longer read-only.
+- **Background Push & Rendering (`BU.3.B`)**: FCM relay for background push notifications and real markdown rendering.
+- **Polish & v0.1 (`BU.4.A`)**: Final polish before tagging the initial v0.1 release.
+
 ---
 
 *Initialized 2026-06-26 from `base-template` (commit `5afd222c8f43af0094800f3bebc64fbdfb4bd167`).*
