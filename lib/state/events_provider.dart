@@ -30,6 +30,17 @@ const needsInputEvent = 'needs_input';
 /// socket. Each read constructs a fresh filtered view over the same
 /// underlying broadcast stream, so independent listeners (badge state,
 /// notification service) never steal events from one another.
+///
+/// DELIBERATELY NOT DEBOUNCED (BU.ticket.ws-debounce, Task 3). This is a
+/// discrete, one-shot prompt stream, not a high-frequency state refresh —
+/// unlike `workflows_provider.dart` / `pane_provider.dart` /
+/// `sessions_provider.dart`, which apply rxdart `.debounceTime(~150ms)`
+/// before their providers consume the stream. Every `needs_input` event
+/// must reach the operator; wrapping this stream in `.debounceTime` (or any
+/// throttle/coalescing operator) would let a rapid burst of prompts collapse
+/// into a single delivery, silently dropping/delaying an approval request.
+/// If you're tempted to "smooth out" this stream in a future refactor,
+/// don't — that's the bug this comment exists to prevent.
 final needsInputEventsProvider = Provider<Stream<EventFrame>>((ref) {
   final socket = ref.watch(bastionSocketProvider);
   if (socket == null) {
