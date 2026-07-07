@@ -77,9 +77,13 @@ class FakeHttpTransport implements HttpTransport {
   }) => throw UnimplementedError('not exercised by this test');
 }
 
+/// Uses a real (non-zero) delay per round so rxdart's `.debounceTime(~150ms)`
+/// on the per-repo `workflow_done` stream (see
+/// `lib/state/workflows_provider.dart`) has enough wall-clock time to fire
+/// within the default 5 rounds (200ms total).
 Future<void> pump([int rounds = 5]) async {
   for (var i = 0; i < rounds; i++) {
-    await Future<void>.delayed(Duration.zero);
+    await Future<void>.delayed(const Duration(milliseconds: 40));
   }
 }
 

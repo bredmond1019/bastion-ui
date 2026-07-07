@@ -21,6 +21,7 @@ library;
 import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:rxdart/rxdart.dart';
 
 import '../models/frame.dart';
 import '../services/bastion_api.dart';
@@ -69,13 +70,23 @@ class PaneNotifier extends StateNotifier<List<String>> {
        super(const []) {
     _seed();
     _socket.send(ClientFrames.subscribe(paneTopic(sessionName)));
-    _sub = _socket.frames.listen(_onFrame);
+    // Filter to this session's own pane frames first, then debounce
+    // (trailing, ~150ms) — a rapid-fire burst of output frames (or fast pane
+    // switching re-subscribing) collapses to the single latest buffer
+    // instead of thrashing a rebuild per frame. Filtering before debouncing
+    // keeps a burst on another session's pane from affecting this one, since
+    // `_socket.frames` is a single shared broadcast stream across sessions.
+    _sub = _socket.frames
+        .where((frame) => frame is PaneFrame && frame.session == sessionName)
+        .cast<PaneFrame>()
+        .debounceTime(const Duration(milliseconds: 150))
+        .listen(_onFrame);
   }
 
   final String sessionName;
   final BastionSocket _socket;
   final BastionApi _api;
-  StreamSubscription<BastionFrame>? _sub;
+  StreamSubscription<PaneFrame>? _sub;
 
   /// The `seq` of the last-applied WS `pane` frame, or `null` if none has
   /// been applied yet (the REST seed has no `seq` of its own).
@@ -98,8 +109,7 @@ class PaneNotifier extends StateNotifier<List<String>> {
     }
   }
 
-  void _onFrame(BastionFrame frame) {
-    if (frame is! PaneFrame || frame.session != sessionName) return;
+  void _onFrame(PaneFrame frame) {
     final lastSeq = _lastSeq;
     if (lastSeq != null && frame.seq <= lastSeq) {
       // Out-of-order or duplicate frame — drop it, keep the newer buffer.

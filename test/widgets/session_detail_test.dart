@@ -101,9 +101,16 @@ final class FakeHttpTransport implements HttpTransport {
 
 /// Pump the microtask/timer queue so async work (handshake, seed fetch,
 /// frame decoding) settles.
+///
+/// Advances by a non-zero duration per round so rxdart's
+/// `.debounceTime(~150ms)` on the provider-layer WS stream (see
+/// `lib/state/pane_provider.dart`) has enough fake-clock time to fire within
+/// the default 5 rounds (200ms total) — `flutter_test`'s widget bindings run
+/// inside a `FakeAsync` zone, so `Timer`s only advance when `tester.pump`
+/// is given an explicit duration.
 Future<void> pump(WidgetTester tester, [int rounds = 5]) async {
   for (var i = 0; i < rounds; i++) {
-    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 40));
   }
 }
 

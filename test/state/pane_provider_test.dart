@@ -82,9 +82,13 @@ class FakeHttpTransport implements HttpTransport {
 
 /// Pump the microtask/timer queue so async work (handshake, seed fetch,
 /// frame decoding) settles.
+///
+/// Uses a real (non-zero) delay per round so rxdart's `.debounceTime(~150ms)`
+/// on the provider-layer WS streams (see `lib/state/pane_provider.dart`) has
+/// enough wall-clock time to fire within the default 5 rounds (200ms total).
 Future<void> pump([int rounds = 5]) async {
   for (var i = 0; i < rounds; i++) {
-    await Future<void>.delayed(Duration.zero);
+    await Future<void>.delayed(const Duration(milliseconds: 40));
   }
 }
 

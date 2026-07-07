@@ -25,6 +25,7 @@ library;
 import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:rxdart/rxdart.dart';
 
 import '../models/frame.dart';
 import '../models/session_dto.dart';
@@ -88,12 +89,20 @@ class SessionsNotifier extends StateNotifier<List<SessionDto>> {
       super(const []) {
     _seed();
     _socket.send(ClientFrames.subscribe(sessionsTopic));
-    _sub = _socket.frames.listen(_onFrame);
+    // Filter to `sessions` snapshots first, then debounce (trailing,
+    // ~150ms) — a flood of snapshot frames (e.g. many sessions churning at
+    // once) collapses to the single latest list instead of thrashing a
+    // rebuild per frame.
+    _sub = _socket.frames
+        .where((frame) => frame is SessionsFrame)
+        .cast<SessionsFrame>()
+        .debounceTime(const Duration(milliseconds: 150))
+        .listen(_onFrame);
   }
 
   final BastionSocket _socket;
   final BastionApi _api;
-  StreamSubscription<BastionFrame>? _sub;
+  StreamSubscription<SessionsFrame>? _sub;
 
   /// `true` once the first WS `sessions` snapshot has been applied — after
   /// that point the (possibly slower) REST seed must never overwrite newer
@@ -112,11 +121,9 @@ class SessionsNotifier extends StateNotifier<List<SessionDto>> {
     }
   }
 
-  void _onFrame(BastionFrame frame) {
-    if (frame is SessionsFrame) {
-      _sawWsSnapshot = true;
-      state = frame.sessions;
-    }
+  void _onFrame(SessionsFrame frame) {
+    _sawWsSnapshot = true;
+    state = frame.sessions;
   }
 
   @override

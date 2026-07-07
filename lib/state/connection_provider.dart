@@ -152,6 +152,14 @@ class ConnectionNotifier extends StateNotifier<ConnectionState> {
   // ---- Status transitions -------------------------------------------------
 
   /// Update the live connection status (called by the socket service).
+  ///
+  /// Not debounced: this provider does not itself own or consume a raw WS
+  /// stream — `main.dart` bridges `BastionSocket.statusStream` into a single
+  /// call per discrete status transition (disconnected/connecting/connected/
+  /// reconnecting), so there is no high-frequency flood to coalesce here. If
+  /// a future socket implementation starts flapping this status rapidly,
+  /// debounce at the bridging call site (or wrap `statusStream` itself with
+  /// `.debounceTime`), not inside this notifier.
   void updateStatus(ConnectionStatus status) {
     state = state.copyWith(status: status);
   }

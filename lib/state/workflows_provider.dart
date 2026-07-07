@@ -23,6 +23,7 @@ library;
 import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:rxdart/rxdart.dart';
 
 import '../models/frame.dart';
 import '../models/repo_status_dto.dart';
@@ -41,6 +42,14 @@ const workflowDoneEvent = 'workflow_done';
 /// socket. Each read constructs a fresh filtered view over the same
 /// underlying broadcast stream, so independent listeners (per-repo state,
 /// the notification service) never steal events from one another.
+///
+/// This raw stream is intentionally left undebounced here — it fans out to
+/// every repo's [repoWorkflowsProvider] family member. Debouncing it at this
+/// shared layer would let a burst of events for repo B swallow a concurrent
+/// event for repo A (rxdart's `debounceTime` only re-emits the latest value
+/// on a single shared stream). Each family member instead filters to its own
+/// repo *before* debouncing (see [repoWorkflowsProvider]), so the ~150ms
+/// window only coalesces same-repo refresh triggers.
 final workflowDoneEventsProvider = Provider<Stream<EventFrame>>((ref) {
   final socket = ref.watch(bastionSocketProvider);
   if (socket == null) {
@@ -101,7 +110,14 @@ final repoWorkflowsProvider =
           'app shell must connect before mounting the repo-detail screen.',
         );
       }
-      final events = ref.watch(workflowDoneEventsProvider);
+      // Filter to this repo's own `workflow_done` events first, then debounce
+      // (trailing, ~150ms) — filtering before debouncing keeps a burst of
+      // events for other repos from swallowing this repo's refresh trigger
+      // (see the note on [workflowDoneEventsProvider]).
+      final events = ref
+          .watch(workflowDoneEventsProvider)
+          .where((frame) => frame.extra['repo'] == repoName)
+          .debounceTime(const Duration(milliseconds: 150));
       // NB: StateNotifierProvider disposes the returned notifier automatically
       // when the provider itself is disposed — do not also register
       // `ref.onDispose(notifier.dispose)` here, or dispose() runs twice.
