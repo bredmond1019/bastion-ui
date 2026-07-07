@@ -68,7 +68,11 @@ bastion-ui/
 
 ## Roadmap / Known limitations
 
-- **No known blocking limitations.** High-frequency WebSocket state streams are debounced (RxDart) to prevent rebuild thrashing; one-shot input prompts remain undebounced by design. Future work: offline caching and reconnection/backoff resilience.
+High-frequency WebSocket state streams are debounced (RxDart) to prevent rebuild thrashing; one-shot input prompts remain undebounced by design. Planned work:
+
+- **Command palette:** Inject/spawn actions directly from the app so the pager is no longer read-only.
+- **Background push & rendering:** FCM relay for background push notifications and full markdown rendering.
+- **v0.1 polish:** Final polish before tagging the initial v0.1 release.
 
 ---
 
