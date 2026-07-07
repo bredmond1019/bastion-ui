@@ -41,6 +41,7 @@ dependencies:
   flutter_riverpod: ^2.6.1          # State management (fixed by master-plan)
   flutter_markdown: ^0.7.7          # Markdown rendering surface
   flutter_local_notifications: ^19.3.0 # Local notification support (Phase 2+)
+  rxdart: ^0.28.0                   # Debounce for high-frequency WS state-refresh streams
 
 dev_dependencies:
   flutter_test:
