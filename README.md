@@ -12,6 +12,8 @@ related: [context, status, master-plan, planning-index]
 
 # BastionUI
 
+> Part of the **Bastion** ecosystem — see the [bastion-os](https://github.com/bredmond1019/bastion-os) front door for the full architecture.
+
 Flutter mobile Surface (Android phone + tablet) for remotely operating the whole Bastion practice OS over Tailscale, backed by a bastion serve HTTP+WebSocket API.
 
 ## Prerequisites
@@ -66,11 +68,7 @@ bastion-ui/
 
 ## Roadmap / Known limitations
 
-Upcoming phases in the Bastion Consolidation Program ([master-plan](https://github.com/bredmond1019/bastion-os/tree/main)):
-
-- **Command Palette (`BU.3.A`)**: Inject/spawn actions directly from the app so the pager is no longer read-only.
-- **Background Push & Rendering (`BU.3.B`)**: FCM relay for background push notifications and real markdown rendering.
-- **Polish & v0.1 (`BU.4.A`)**: Final polish before tagging the initial v0.1 release.
+- **No known blocking limitations.** High-frequency WebSocket state streams are debounced (RxDart) to prevent rebuild thrashing; one-shot input prompts remain undebounced by design. Future work: offline caching and reconnection/backoff resilience.
 
 ---
 
