@@ -2,7 +2,7 @@
 type: Log
 title: BastionUI Development Log
 description: Chronological log of work completed for BastionUI.
-timestamp: "2026-07-17T17:05:00Z"
+timestamp: "2026-07-17T23:10:00Z"
 ---
 
 # Log — BastionUI
@@ -12,6 +12,35 @@ timestamp: "2026-07-17T17:05:00Z"
 ---
 
 ## [2026-07-17]
+
+### BU.7.A closed: E2E support helpers (managed session, frame collector, tmux guard)
+
+- **What:** Closed `BU.7.A` via `/sdlc-task 7.A-e2e-support-helpers`, all 5 tasks passed in place
+  on `main` (commits `f0ddee0`, `6eb1ff7`, `bef9586`, `0d7de15`). Added `test/e2e/e2e_support.dart`
+  — a shared, non-`e2e`-tagged library exporting `tmuxAvailable()` (tmux-on-PATH self-skip guard),
+  `subscribeAndCollect()` (subscribe-and-collect N decoded `BastionFrame`s from a `BastionSocket`),
+  and `withManagedSession()` (create-yield-cleanup around `BastionApi.createSession`/`deleteSession`)
+  — plus its own gating test suite `test/e2e/e2e_support_test.dart` (351 lines). This is shared
+  test seam infrastructure for the upcoming e2e coverage blocks `BU.7.B` (session lifecycle
+  round-trip e2e) and `BU.7.C` (live WS pane frame decode e2e), both of which were blocked on
+  `BU.7.A` and are now unblocked/ready in the dependency graph. Also `BU.8.B` (blocked on `BU.7.A`
+  + `BU.8.A`) has one of its two blockers cleared.
+
+  Ran `/close-out` afterward (no worktree — this ran in place on `main`, so no branch merge step
+  applies): `dart format` clean, `flutter analyze` clean (no issues), `flutter test --exclude-tags
+  e2e` = 269 tests all green, non-gating `flutter test --tags e2e` also passed (1 test, real
+  `bastion serve` subprocess). Emoji gate clean (no `.md` files changed this session). Coverage gap
+  scan: no blocking gaps — both changed files are test-only (the new helper library + its own
+  dedicated test file), no production source touched. `/code-review low`: both changed files are
+  under `test/`, which this review level skips entirely per its own rules — zero findings.
+  `/update-docs --patch`: no STALE or MISSING doc items — the new helper is internal test
+  infrastructure (not user-facing), so it's NO-DOC; `docs/api-reference.md` was already current
+  from the prior session's `dispose()` fix.
+- **Why:** `BU.7.A` is the plan-of-record block for Phase 7 (E2E coverage, D34 seam) — providing
+  the shared test-support seam that `BU.7.B`/`BU.7.C` will build their real e2e assertions on top
+  of, without each duplicating session-management/frame-collection/tmux-guard boilerplate.
+- **Refs:** `planning/7.A-e2e-support-helpers/tasks.md`,
+  `planning/7.A-e2e-support-helpers/sdlc/sdlc-task-state.json`
 
 ### BU.ticket.e2e-serve-contract closed: service-level e2e + dispose() hang fix
 
