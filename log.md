@@ -2,7 +2,7 @@
 type: Log
 title: BastionUI Development Log
 description: Chronological log of work completed for BastionUI.
-timestamp: "2026-07-17T04:25:10Z"
+timestamp: "2026-07-17T17:05:00Z"
 ---
 
 # Log — BastionUI
@@ -12,6 +12,28 @@ timestamp: "2026-07-17T04:25:10Z"
 ---
 
 ## [2026-07-17]
+
+### BU.ticket.e2e-serve-contract closed: service-level e2e + dispose() hang fix
+
+- **What:** Closed `BU.ticket.e2e-serve-contract` — a service-level e2e test that boots a real,
+  DB-free `bastion serve` subprocess and drives the app's real `BastionApi`/`BastionSocket`
+  against it to catch wire-contract drift between BastionUI's Dart DTOs and `bastion`'s
+  `serve-api.md`. Wired as a **non-gating** harness check (`flutter test --tags e2e`,
+  `gates: false`), excluded from the gate via the `e2e` tag in `dart_test.yaml`; it self-skips
+  when no built binary is found (see the `e2e-needs-built-bastion-binary` carryover). Running it
+  surfaced and fixed a real **production hang bug**: `BastionSocket.dispose()` awaited
+  `_transport.close()`, which never completes for a socket whose WS upgrade failed (fatal-auth
+  401) — hanging teardown, reconnect-with-new-token, and navigation forever. The fix bounds the
+  close with an injectable timeout (`_disposeCloseTimeout`, default 5s); added a unit test
+  (`test/services/reconnect_test.dart`, `hangOnClose` fake) and removed the e2e
+  `_disposeBounded` workaround that had masked it. Close-out: gating suite green (262 tests),
+  `flutter analyze` + `dart format` clean, `/code-review low` no findings, real e2e passes
+  against a built binary. Commits on `main`: 740cf77, d1599b8, f50933c (sdlc-task tasks),
+  ba87374 (dispose fix), b7fad2c (docs).
+- **Why:** Guards the thin-client contract (Standing Rule 6): BastionUI mirrors `bastion`'s
+  serve-api schema and must catch drift before it ships. The e2e paid off immediately by
+  exposing a latent teardown/reconnect hang that unit tests alone had not caught.
+- **Refs:** `planning/ticket-e2e-serve-contract/tasks.md`. Next: `BU.4.A` (polish + v0.1 tag).
 
 ### BU.3.A closed: command palette (inject / spawn)
 
