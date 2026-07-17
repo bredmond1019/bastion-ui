@@ -2,7 +2,7 @@
 type: Log
 title: BastionUI Development Log
 description: Chronological log of work completed for BastionUI.
-timestamp: "2026-07-07T00:00:00Z"
+timestamp: "2026-07-17T04:25:10Z"
 ---
 
 # Log — BastionUI
@@ -36,6 +36,11 @@ timestamp: "2026-07-07T00:00:00Z"
   Delivers the app's only write-path action beyond session control: firing a slash-command into
   an existing session or spawning a new one, then auto-opening its pane.
 - **Refs:** `planning/3.A-command-palette/tasks.md`
+
+### BU.3.A Close-Out — Command Palette Flow
+- **What:** Ran /close-out --merge-branch after /sdlc-flow 3.A-command-palette completed (all 7 tasks passed, end-of-run review PASS, 261 tests green, PR #1 opened at https://github.com/bredmond1019/bastion-ui/pull/1). Close-out re-verified the gating suite (dart format, flutter analyze, flutter test — all clean), ran a coverage gap scan (no blocking gaps — every changed source file has a matching test file), ran /code-review low on the diff (no findings), and ran /update-docs --patch (confirmed docs/architecture.md, docs/pages.md, docs/api-reference.md were already patched by the sdlc-flow's own docs stage — nothing further needed). Wrote planning/handoff.md documenting the state. The remaining step is close-out's Step 5b: fast-forward-merge 3.A-command-palette-flow into main and run mev emit-state --write.
+- **Why:** BU.3.A (command palette / inject-spawn quick-actions) is the plan-of-record block; this closes it out cleanly per the standing SDLC workflow before starting BU.4.A (polish + v0.1 tag).
+- **Refs:** PR #1 (https://github.com/bredmond1019/bastion-ui/pull/1), planning/3.A-command-palette/tasks.md, planning/3.A-command-palette/sdlc/sdlc-flow-state.json, planning/handoff.md
 
 ---
 
