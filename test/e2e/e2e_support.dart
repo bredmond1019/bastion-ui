@@ -8,14 +8,15 @@
 ///     binary on PATH.
 ///   - [subscribeAndCollect] — subscribe-and-collect N decoded
 ///     `BastionFrame`s from a `BastionSocket`.
-///   - `withManagedSession` (added in a later task) — create-yield-cleanup
-///     around `BastionApi.createSession`/`deleteSession`.
+///   - [withManagedSession] — create-yield-cleanup around
+///     `BastionApi.createSession`/`deleteSession`.
 library;
 
 import 'dart:async';
 import 'dart:io';
 
 import 'package:bastion_ui/models/frame.dart';
+import 'package:bastion_ui/services/bastion_api.dart';
 import 'package:bastion_ui/services/bastion_socket.dart';
 import 'package:bastion_ui/state/pane_provider.dart' show paneTopic;
 
@@ -103,4 +104,31 @@ Future<List<BastionFrame>> subscribeAndCollect(
   socket.send(ClientFrames.subscribe(topic));
 
   return completer.future;
+}
+
+/// Creates a session named [name] (optionally in [dir]) via
+/// `BastionApi.createSession`, invokes [body] with that name, and deletes
+/// the session in a `finally` — cleanup runs even when [body] throws, and
+/// the original error still propagates.
+///
+/// Only errors thrown by the cleanup `deleteSession` call itself are
+/// swallowed (best-effort teardown), so a cleanup failure never masks the
+/// real result or the original error from [body].
+Future<T> withManagedSession<T>(
+  BastionApi api,
+  Future<T> Function(String name) body, {
+  required String name,
+  String? dir,
+}) async {
+  await api.createSession(name, dir: dir);
+  try {
+    return await body(name);
+  } finally {
+    try {
+      await api.deleteSession(name);
+    } catch (_) {
+      // Best-effort cleanup — never let a teardown failure mask the real
+      // result or the original error from `body`.
+    }
+  }
 }
