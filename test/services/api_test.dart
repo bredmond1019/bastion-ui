@@ -4,6 +4,7 @@ import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:bastion_ui/models/action_dto.dart';
 import 'package:bastion_ui/models/dto.dart';
 import 'package:bastion_ui/services/bastion_api.dart';
 
@@ -814,5 +815,156 @@ void main() {
         throwsA(isA<ApiError>()),
       );
     });
+  });
+
+  group('BastionApi.postCommand', () {
+    test('POSTs an inject request and returns the target session id', () async {
+      final t = FakeHttpTransport();
+      t.setResponse(statusCode: 200, body: {'session': 'main'});
+      final api = makeApi(t);
+
+      final session = await api.postCommand(
+        const CommandRequest(
+          mode: CommandMode.inject,
+          session: 'main',
+          command: '/status',
+        ),
+      );
+
+      expect(session, 'main');
+      final call = t.calls.single;
+      expect(call.method, 'POST');
+      expect(call.url, 'http://127.0.0.1:4317/api/actions/command');
+      expect(
+        call.body,
+        jsonEncode({'mode': 'inject', 'session': 'main', 'command': '/status'}),
+      );
+      expect(call.headers['Content-Type'], 'application/json');
+      expect(call.headers['Authorization'], 'Bearer test-token');
+    });
+
+    test('POSTs a spawn request and returns the target session id', () async {
+      final t = FakeHttpTransport();
+      t.setResponse(statusCode: 200, body: {'session': 'work'});
+      final api = makeApi(t);
+
+      final session = await api.postCommand(
+        const CommandRequest(
+          mode: CommandMode.spawn,
+          name: 'work',
+          dir: '/repo',
+          model: CommandModel.opus,
+          command: '/status',
+        ),
+      );
+
+      expect(session, 'work');
+      final call = t.calls.single;
+      expect(
+        call.body,
+        jsonEncode({
+          'mode': 'spawn',
+          'name': 'work',
+          'dir': '/repo',
+          'model': 'opus',
+          'command': '/status',
+        }),
+      );
+    });
+
+    test('throws FatalAuthError on 401', () async {
+      final t = FakeHttpTransport();
+      t.setResponse(
+        statusCode: 401,
+        body: {'error': 'unauthorized', 'code': 'unauthorized'},
+      );
+      final api = makeApi(t);
+
+      await expectLater(
+        api.postCommand(
+          const CommandRequest(
+            mode: CommandMode.inject,
+            session: 'main',
+            command: '/status',
+          ),
+        ),
+        throwsA(isA<FatalAuthError>()),
+      );
+    });
+
+    test(
+      'throws ApiError with statusCode 400 on bad mode/field combo',
+      () async {
+        final t = FakeHttpTransport();
+        t.setResponse(
+          statusCode: 400,
+          body: {'code': 'C006', 'message': 'invalid request'},
+        );
+        final api = makeApi(t);
+
+        try {
+          await api.postCommand(
+            const CommandRequest(
+              mode: CommandMode.inject,
+              session: 'main',
+              command: '/status',
+            ),
+          );
+          fail('expected ApiError');
+        } on ApiError catch (e) {
+          expect(e.statusCode, 400);
+        }
+      },
+    );
+
+    test(
+      'throws ApiError with statusCode 404 on inject into unknown session',
+      () async {
+        final t = FakeHttpTransport();
+        t.setResponse(
+          statusCode: 404,
+          body: {'code': 'C002', 'message': 'session not found'},
+        );
+        final api = makeApi(t);
+
+        try {
+          await api.postCommand(
+            const CommandRequest(
+              mode: CommandMode.inject,
+              session: 'nosuch',
+              command: '/status',
+            ),
+          );
+          fail('expected ApiError');
+        } on ApiError catch (e) {
+          expect(e.statusCode, 404);
+        }
+      },
+    );
+
+    test(
+      'throws ApiError with statusCode 504 on spawn readiness timeout',
+      () async {
+        final t = FakeHttpTransport();
+        t.setResponse(
+          statusCode: 504,
+          body: {'code': 'C007', 'message': 'spawn readiness timeout'},
+        );
+        final api = makeApi(t);
+
+        try {
+          await api.postCommand(
+            const CommandRequest(
+              mode: CommandMode.spawn,
+              name: 'work',
+              command: '/status',
+            ),
+          );
+          fail('expected ApiError');
+        } on ApiError catch (e) {
+          expect(e.statusCode, 504);
+        }
+      },
+    );
   });
 }

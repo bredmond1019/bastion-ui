@@ -12,6 +12,7 @@ library;
 import 'dart:convert';
 import 'dart:io';
 
+import '../models/action_dto.dart';
 import '../models/dto.dart';
 import '../models/repo_status_dto.dart';
 import '../models/session_dto.dart';
@@ -426,6 +427,38 @@ final class BastionApi {
       result.body,
       WorkflowStateDto.fromJson,
     );
+  }
+
+  // -------------------------------------------------------------------------
+  // Quick-action command REST (v0.4) — serve-api.md §12
+  // -------------------------------------------------------------------------
+
+  /// `POST /api/actions/command` — fire a slash-command at Bastion, either
+  /// injecting it into an existing session ([CommandMode.inject]) or
+  /// spawning a new one ([CommandMode.spawn]).
+  ///
+  /// Note the `/api` prefix: the master-plan's shorthand `POST
+  /// /actions/command` omits it — the contract (serve-api.md §12) wins.
+  ///
+  /// Returns the target tmux session id from the `200` response body.
+  ///
+  /// Throws [FatalAuthError] on `401`, [ApiError] on other HTTP errors
+  /// (`400`/`C006` bad mode/field combo or untrusted spawn dir, `404`/`C002`
+  /// inject into an unknown session, `503`/`C001` tmux unavailable,
+  /// `504`/`C007` spawn readiness timeout, `500`/`C010` otherwise per
+  /// §12.3), or a [SocketException] / [HttpException] on network failure.
+  Future<String> postCommand(CommandRequest request) async {
+    final result = await _transport.post(
+      '$_baseUrl/api/actions/command',
+      headers: _jsonHeaders,
+      body: jsonEncode(request.toJson()),
+    );
+    final response = _decode(
+      result.statusCode,
+      result.body,
+      CommandResponse.fromJson,
+    );
+    return response.session;
   }
 
   // -------------------------------------------------------------------------
