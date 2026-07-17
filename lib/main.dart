@@ -14,6 +14,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'models/frame.dart';
 import 'screens/dashboard_screen.dart';
+import 'screens/quick_actions_screen.dart';
 import 'screens/repo_detail_screen.dart';
 import 'screens/session_detail_screen.dart';
 import 'screens/sessions_list_screen.dart';
@@ -242,6 +243,11 @@ class _HomeShellState extends ConsumerState<HomeShell> {
 /// Also subscribes directly to [workflowDoneEventsProvider] to surface an
 /// in-app [SnackBar] banner while foregrounded, in addition to (not instead
 /// of) the local notification fired by [workflowDoneNotificationWiringProvider].
+///
+/// A third tab, [QuickActionsScreen], rounds out the bottom nav
+/// (`BU.3.A` Task 6 — closes the loop `BU.1.A`/`BU.2.A` left implicit: a
+/// screen existing and being unit-tested is not the same as it being
+/// reachable from the running app).
 class _ConnectedBody extends ConsumerStatefulWidget {
   const _ConnectedBody();
 
@@ -250,7 +256,11 @@ class _ConnectedBody extends ConsumerStatefulWidget {
 }
 
 class _ConnectedBodyState extends ConsumerState<_ConnectedBody> {
-  static const _tabs = [SessionsListScreen(), DashboardScreen()];
+  static const _tabs = [
+    SessionsListScreen(),
+    DashboardScreen(),
+    QuickActionsScreen(),
+  ];
 
   int _tabIndex = 0;
   StreamSubscription<EventFrame>? _workflowDoneSub;
@@ -310,6 +320,7 @@ class _ConnectedBodyState extends ConsumerState<_ConnectedBody> {
             icon: Icon(Icons.dashboard),
             label: 'Dashboard',
           ),
+          NavigationDestination(icon: Icon(Icons.flash_on), label: 'Actions'),
         ],
       ),
     );

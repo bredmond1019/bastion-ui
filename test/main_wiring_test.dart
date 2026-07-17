@@ -15,15 +15,19 @@
 //      a repo row must push RepoDetailScreen via the same route-generation
 //      mechanism (`/repos/{name}`) — this is the task that closes the loop
 //      BU.1.A initially missed, applied to the dashboard/repo-detail pair.
+//   4. (BU.3.A Task 6) QuickActionsScreen must be reachable as a third
+//      bottom-nav destination alongside Sessions/Dashboard.
 
 import 'dart:async';
 
 import 'package:flutter/material.dart' hide ConnectionState;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:bastion_ui/main.dart';
 import 'package:bastion_ui/screens/dashboard_screen.dart';
+import 'package:bastion_ui/screens/quick_actions_screen.dart';
 import 'package:bastion_ui/screens/repo_detail_screen.dart';
 import 'package:bastion_ui/screens/session_detail_screen.dart';
 import 'package:bastion_ui/screens/sessions_list_screen.dart';
@@ -108,6 +112,85 @@ class _FakeHttpTransport implements HttpTransport {
     String url, {
     Map<String, String> headers = const {},
   }) async => (statusCode: 204, body: '');
+}
+
+/// In-memory fake for `secureStorageProvider` (mirrors
+/// `commands_provider_test.dart`) — avoids `FlutterSecureStorage` platform
+/// channels so `QuickActionsScreen`'s `commandsProvider` can load/persist
+/// during a widget test.
+class _FakeSecureStorage extends Fake implements FlutterSecureStorage {
+  final Map<String, String?> _store = {};
+
+  @override
+  Future<void> write({
+    required String key,
+    required String? value,
+    IOSOptions? iOptions,
+    AndroidOptions? aOptions,
+    LinuxOptions? lOptions,
+    WebOptions? webOptions,
+    MacOsOptions? mOptions,
+    WindowsOptions? wOptions,
+  }) async {
+    _store[key] = value;
+  }
+
+  @override
+  Future<String?> read({
+    required String key,
+    IOSOptions? iOptions,
+    AndroidOptions? aOptions,
+    LinuxOptions? lOptions,
+    WebOptions? webOptions,
+    MacOsOptions? mOptions,
+    WindowsOptions? wOptions,
+  }) async => _store[key];
+}
+
+/// Reproduces `_ConnectedBody`'s three-tab bottom-nav structure. That class
+/// is library-private to `main.dart` (and, unlike sockets/APIs, has no
+/// fake-injectable seam), so it cannot be pumped directly from this file —
+/// this harness drives the identical tab widgets
+/// (`SessionsListScreen`/`DashboardScreen`/`QuickActionsScreen`) and
+/// `NavigationDestination` set that `main.dart`'s `_ConnectedBodyState.build`
+/// wires up, to exercise the real tab-selection wiring without going through
+/// `HomeShell`'s real (non-fake-injectable) socket lifecycle — which would
+/// leave a pending reconnect `Timer` at test teardown (see
+/// `bastion_socket.dart`'s `_scheduleReconnect`).
+class _TabsHarness extends StatefulWidget {
+  const _TabsHarness();
+
+  @override
+  State<_TabsHarness> createState() => _TabsHarnessState();
+}
+
+class _TabsHarnessState extends State<_TabsHarness> {
+  static const _tabs = [
+    SessionsListScreen(),
+    DashboardScreen(),
+    QuickActionsScreen(),
+  ];
+
+  int _tabIndex = 0;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: IndexedStack(index: _tabIndex, children: _tabs),
+      bottomNavigationBar: NavigationBar(
+        selectedIndex: _tabIndex,
+        onDestinationSelected: (index) => setState(() => _tabIndex = index),
+        destinations: const [
+          NavigationDestination(icon: Icon(Icons.list), label: 'Sessions'),
+          NavigationDestination(
+            icon: Icon(Icons.dashboard),
+            label: 'Dashboard',
+          ),
+          NavigationDestination(icon: Icon(Icons.flash_on), label: 'Actions'),
+        ],
+      ),
+    );
+  }
 }
 
 /// The same route-generation logic `BastionApp` wires up, reproduced here so
@@ -253,6 +336,53 @@ void main() {
     expect(tester.takeException(), isNull);
     expect(find.text('bastion-ui'), findsWidgets); // detail AppBar title
     expect(find.text('wiring dashboard'), findsOneWidget); // status "now"
+  });
+
+  testWidgets('quick-actions tab is present, selectable, and renders '
+      'QuickActionsScreen (BU.3.A Task 6)', (tester) async {
+    final socket = BastionSocket(
+      host: 'test-host',
+      port: 4317,
+      token: 'test-token',
+      transportFactory: (uri, {headers}) => _FakeWsTransport(),
+    );
+    addTearDown(socket.dispose);
+    final api = BastionApi(
+      host: 'test-host',
+      port: 4317,
+      token: 'test-token',
+      transport: _FakeHttpTransport(),
+    );
+    addTearDown(api.dispose);
+    final fakeStorage = _FakeSecureStorage();
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          bastionSocketProvider.overrideWith((ref) => socket),
+          bastionApiProvider.overrideWith((ref) => api),
+          secureStorageProvider.overrideWithValue(fakeStorage),
+        ],
+        child: MaterialApp(
+          home: const _TabsHarness(),
+          onGenerateRoute: _generateRoute,
+        ),
+      ),
+    );
+    await tester.pump();
+
+    // Sessions is the initial tab; the other two destinations (including
+    // the new "Actions" quick-actions tab) are present but not selected.
+    expect(find.text('Sessions'), findsWidgets); // tab label + AppBar
+    expect(find.text('Dashboard'), findsOneWidget); // nav label only
+    expect(find.text('Actions'), findsOneWidget); // nav label only
+
+    // Selecting the quick-actions destination renders QuickActionsScreen.
+    await tester.tap(find.text('Actions'));
+    await tester.pump();
+
+    expect(find.byType(QuickActionsScreen), findsOneWidget);
+    expect(find.text('Quick Actions'), findsOneWidget); // AppBar title
   });
 }
 
