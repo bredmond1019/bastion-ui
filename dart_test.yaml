@@ -1,0 +1,13 @@
+# Test tag registration for `flutter test` / `dart test`.
+#
+# `e2e` marks the service-level e2e tests under `test/e2e/` that spawn a real
+# `bastion serve` subprocess and drive the app's real (non-mocked)
+# BastionApi/BastionSocket clients. These are excluded from the gating suite
+# (`flutter test --exclude-tags e2e`) and run only via the non-gating
+# `e2e-serve-contract` harness check (`flutter test --tags e2e`), which
+# requires a built `bastion` binary (see `planning/harness.json`).
+tags:
+  e2e:
+    description: >-
+      Service-level e2e tests that spawn a real bastion serve subprocess.
+      Non-gating; requires a built bastion binary; self-skips when absent.
