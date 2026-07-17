@@ -29,10 +29,7 @@ import 'bastion_serve_harness.dart';
 /// quirk can't hang the whole e2e run — this is test-robustness, not a
 /// change to the production dispose() contract.
 Future<void> _disposeBounded(BastionSocket socket) =>
-    socket.dispose().timeout(
-      const Duration(seconds: 5),
-      onTimeout: () {},
-    );
+    socket.dispose().timeout(const Duration(seconds: 5), onTimeout: () {});
 
 void main() {
   group('serve contract e2e', () {
@@ -104,7 +101,11 @@ void main() {
         }
 
         // --- WS handshake: real connect() reaches connected -------------
-        final socket = BastionSocket(host: h.host, port: h.port, token: h.token);
+        final socket = BastionSocket(
+          host: h.host,
+          port: h.port,
+          token: h.token,
+        );
         try {
           final connected = socket.statusStream.firstWhere(
             (s) => s == ConnectionStatus.connected,
