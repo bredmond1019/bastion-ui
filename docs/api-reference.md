@@ -65,6 +65,8 @@ Manages `ws://<host>:<port>/ws` with capped exponential backoff reconnect (1s, 2
   in-stream; reconnect stops permanently (construct a new instance to retry).
 - `send(Map<String, dynamic> json)` — no-op unless `status == connected`.
 - `connect()` / `dispose()` — lifecycle; the instance cannot be reused after `dispose()`.
+  `dispose()` bounds the underlying transport close with a timeout (default 5s), so a socket
+  whose handshake failed (fatal-auth 401) can never hang teardown, reconnect, or navigation.
 
 ### `BastionFrame` kinds (`lib/models/frame.dart`)
 
