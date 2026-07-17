@@ -11,6 +11,34 @@ timestamp: "2026-07-07T00:00:00Z"
 
 ---
 
+## [2026-07-17]
+
+### BU.3.A closed: command palette (inject / spawn)
+
+- **What:** Ran `/sdlc-flow 3.A-command-palette` on branch `3.A-command-palette-flow` against
+  `planning/3.A-command-palette/tasks.md`. All 7 tasks passed: task 1 added
+  `CommandMode`/`CommandModel` enums and hand-written `CommandRequest`/`CommandResponse` DTOs
+  mirroring serve-api §12.1; task 2 added `BastionApi.postCommand` (`POST /api/actions/command`,
+  401→`FatalAuthError`, other errors→`ApiError`, per §12.3); task 3 added a persisted,
+  user-editable `commandsProvider` (add/update/delete/reorder) backed by the existing
+  `secureStorageProvider`; task 4 added `CommandInvokeSheet` (inject/spawn mode toggle, session
+  picker, spawn name/dir/model fields, pending + error states); task 5 added
+  `QuickActionsScreen` (palette CRUD, tap-to-invoke, navigation to the server-returned session)
+  plus its widget test suite; task 6 wired a third "Actions" tab into `HomeShell`'s bottom nav
+  in `main.dart`; task 7 was validation-only and confirmed `dart format`/`flutter
+  analyze`/`flutter test` (261 tests) all pass clean. End-of-run review returned **PASS** on the
+  first attempt with no findings. Docs patched: `docs/architecture.md`, `docs/pages.md`,
+  `docs/api-reference.md`. No amendments — the spec's persistence decision (reuse
+  `secureStorageProvider`, no new dependency) and contract (serve-api §12 v0.4) were followed as
+  written.
+- **Why:** Plan-of-record block `BU.3.A` (Phase 3 — Quick-action launcher), unblocked
+  2026-07-16 once `bastion` block `BA.11.E` shipped `POST /api/actions/command` (serve-api v0.5).
+  Delivers the app's only write-path action beyond session control: firing a slash-command into
+  an existing session or spawning a new one, then auto-opening its pane.
+- **Refs:** `planning/3.A-command-palette/tasks.md`
+
+---
+
 ## [2026-07-07]
 
 ### BU.ticket.ws-debounce closed: WebSocket state-stream debounce
