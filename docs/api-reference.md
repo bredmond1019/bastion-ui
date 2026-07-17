@@ -36,6 +36,7 @@ REST client for `http://<host>:<port>`. Every request sends `Authorization: Bear
 | `getRepoStatus(name)` | `GET /api/repos/{name}/status` | `RepoStatusDto` | Parsed `status.md` |
 | `getRepoHandoff(name)` | `GET /api/repos/{name}/handoff` | `HandoffInfo?` | Returns `null` (not a throw) on 404 with `code == 'C002'` (no handoff.md); any other 404 body/code still throws `ApiError` |
 | `getRepoWorkflows(name)` | `GET /api/repos/{name}/workflows` | `List<WorkflowStateDto>` | In-flight + completed SDLC workflows for the repo |
+| `postCommand(CommandRequest)` | `POST /api/actions/command` | `String` (session id) | Fires a quick-action command; inject targets an existing session, spawn creates one. Returns `CommandResponse.session` |
 
 `dispose()` releases the underlying `IoHttpTransport`'s socket connections.
 
@@ -47,6 +48,7 @@ REST client for `http://<host>:<port>`. Every request sends `Authorization: Bear
 - `RepoStatusDto { name, now, next, blocked, hasHandoff, momentumNow, momentumNext, momentumBlocked, momentumImprove, momentumRecurring }` — parsed `status.md`
 - `HandoffInfo { title, body }` — parsed `handoff.md`
 - `WorkflowStateDto { specSlug, branch, status, currentTask, startedAt, updatedAt }` — one SDLC workflow; `currentTask` is a JSON integer (`num?.toInt()`), not a string, per serve-api.md v0.3 §11.3 verified directly against the source contract. No PR-link field exists on this DTO.
+- `CommandRequest { mode, session?, name?, dir?, model?, command }`, `CommandResponse { session }` — `models/action_dto.dart`, mirroring serve-api.md v0.4 §12.1's `POST /api/actions/command`. `mode` is `CommandMode.inject`/`.spawn`; `model` is `CommandModel.opus`/`.sonnet` (spawn-only, server defaults to `sonnet` when omitted). `toJson()` omits `dir`/`model` when null and emits `session` only for inject, `name` only for spawn.
 
 All DTOs live in pure-Dart files (no Flutter imports) with `fromJson`/`toJson` and are
 unit-tested for round-trip decoding in `test/models/`.

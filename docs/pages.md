@@ -14,7 +14,7 @@ related: [architecture, api-reference]
 
 All screens live in `lib/screens/`. Routing is handled by `BastionApp.onGenerateRoute`
 in `lib/main.dart`; the app's root shell (`HomeShell` → `_ConnectedBody`) hosts a
-bottom `NavigationBar` with two tabs.
+bottom `NavigationBar` with three tabs.
 
 ## `HomeShell` (`lib/main.dart`)
 
@@ -25,12 +25,13 @@ renders `ConnectionBanner` above either a "Configure a connection" placeholder o
 
 ### `_ConnectedBody` (private, `lib/main.dart`)
 
-Rendered once the socket/API are live. `IndexedStack` of two tabs so both stay mounted:
+Rendered once the socket/API are live. `IndexedStack` of three tabs so all stay mounted:
 
 | Tab | Screen | Icon |
 |---|---|---|
 | 0 | `SessionsListScreen` | `Icons.list` |
 | 1 | `DashboardScreen` | `Icons.dashboard` |
+| 2 | `QuickActionsScreen` | `Icons.flash_on` |
 
 Also activates `notificationWiringProvider` and
 `workflowDoneNotificationWiringProvider`, and shows a foreground `SnackBar` on
@@ -81,6 +82,17 @@ Route: `/repos/<name>` (route argument: `repoName`). Watches the same
 Both `DashboardScreen`/`_RepoRow` and `RepoDetailScreen` react live to `workflow_done`
 WS events for the matching repo — `repoWorkflowsProvider` auto-refetches, so badges and
 the workflow list update without a manual refresh.
+
+## `QuickActionsScreen`
+
+Tab 2. Watches `commandsProvider` (persisted, user-editable command-palette list),
+rendering one tile per `PaletteCommand` with edit/delete `IconButton`s and tap-to-invoke
+on the tile itself; a FAB opens a shared add/edit `AlertDialog` (label + command
+fields). Tapping a tile opens `CommandInvokeSheet` (inject/spawn mode toggle, session
+picker for inject, name/dir/model fields for spawn); on success it calls
+`BastionApi.postCommand` and navigates to `/sessions/<name>` using the
+server-returned session id. `ApiError`/`FatalAuthError` are surfaced inline in the sheet
+without navigating.
 
 ## Route table (`BastionApp.onGenerateRoute`)
 

@@ -26,7 +26,8 @@ lib/
 │   ├── dto.dart             — HealthDto, ErrorPayload
 │   ├── frame.dart           — BastionFrame sealed hierarchy (WS envelope)
 │   ├── session_dto.dart     — SessionDto, PaneDto
-│   └── repo_status_dto.dart — RepoSummaryDto, RepoStatusDto, HandoffInfo, WorkflowStateDto
+│   ├── repo_status_dto.dart — RepoSummaryDto, RepoStatusDto, HandoffInfo, WorkflowStateDto
+│   └── action_dto.dart      — CommandMode, CommandModel, CommandRequest, CommandResponse
 ├── services/                ← transport layer
 │   ├── bastion_api.dart     — REST client (BastionApi)
 │   ├── bastion_socket.dart  — WebSocket client with reconnect (BastionSocket)
@@ -37,13 +38,15 @@ lib/
 │   ├── pane_provider.dart       — per-session live pane buffer
 │   ├── events_provider.dart     — needs_input event stream + flag set
 │   ├── repos_provider.dart      — workspace-registry repo list
-│   └── workflows_provider.dart  — per-repo status/workflows + workflow_done event stream
+│   ├── workflows_provider.dart  — per-repo status/workflows + workflow_done event stream
+│   └── commands_provider.dart   — persisted user-editable command-palette list (CommandsNotifier/commandsProvider)
 ├── screens/                 ← full-page widgets
 │   ├── settings_screen.dart
 │   ├── sessions_list_screen.dart
 │   ├── session_detail_screen.dart
 │   ├── dashboard_screen.dart
-│   └── repo_detail_screen.dart
+│   ├── repo_detail_screen.dart
+│   └── quick_actions_screen.dart
 └── widgets/                 ← presentational, mostly provider-free components
     ├── connection_banner.dart
     ├── session_card.dart
@@ -51,7 +54,8 @@ lib/
     ├── approve_button_row.dart
     ├── status_badge.dart
     ├── markdown_view.dart
-    └── workflow_progress.dart
+    ├── workflow_progress.dart
+    └── command_invoke_sheet.dart
 ```
 
 ## Data flow
@@ -73,8 +77,9 @@ lib/
    and reconnects automatically.
 
 Once both providers are non-null, `HomeShell` renders `_ConnectedBody`, a bottom
-`NavigationBar` with two tabs (`SessionsListScreen`, `DashboardScreen`) inside an
-`IndexedStack` (both screens stay mounted so provider state survives tab switches).
+`NavigationBar` with three tabs (`SessionsListScreen`, `DashboardScreen`,
+`QuickActionsScreen`) inside an `IndexedStack` (all screens stay mounted so provider
+state survives tab switches).
 `_ConnectedBody` also activates `notificationWiringProvider` and
 `workflowDoneNotificationWiringProvider` (local-notification bridges) and shows a
 foreground `SnackBar` on `workflow_done` events.
@@ -118,6 +123,12 @@ is deliberately left undebounced so no `needs_input` event is ever dropped or de
   loading}` snapshot for one repo, held by `RepoWorkflowsNotifier`.
 - `RepoBadgeState` (`widgets/status_badge.dart`) — `idle` / `inFlight` / `hasHandoff`,
   in that priority order (in-flight outranks a pending handoff).
+- `CommandRequest` / `CommandResponse` (`models/action_dto.dart`) — mirror
+  `POST /api/actions/command` (serve-api.md v0.4 §12.1). `CommandRequest.toJson()`
+  omits `dir`/`model` when null and emits `session` only for `CommandMode.inject`,
+  `name` only for `CommandMode.spawn`.
+- `PaletteCommand` (`state/commands_provider.dart`) — local `{label, command}` value
+  object for the user-editable palette; not part of the serve-api contract.
 
 ## Dashboard + repo-detail flow (BU.2.A)
 
@@ -139,6 +150,26 @@ is deliberately left undebounced so no `needs_input` event is ever dropped or de
 - `workflowDoneNotificationWiringProvider` (`services/notifications.dart`) mirrors the
   existing needs-input notification bridge as a second, independent channel keyed by
   `'$repo:$specSlug'.hashCode` so distinct specs for the same repo don't collide.
+
+## Command palette flow (BU.3.A)
+
+- `commandsProvider` (`state/commands_provider.dart`) exposes `CommandsNotifier`, a
+  persisted, user-editable list of `PaletteCommand {label, command}` entries. It is
+  seeded with `defaultPaletteCommands` on first run and JSON-encoded under the
+  `bastion.commands.list` key via the existing `secureStorageProvider` seam (no new
+  storage dependency). A missing or unparseable stored value falls back to the
+  defaults rather than throwing. Supports `add`/`update`/`delete`/`reorder`; malformed
+  indices are silent no-ops.
+- `QuickActionsScreen` (tab 2, `screens/quick_actions_screen.dart`) renders one tile per
+  `PaletteCommand` (edit/delete `IconButton`s plus tap-to-invoke) with a FAB to add new
+  entries via a shared add/edit `AlertDialog`.
+- Tapping a tile opens `CommandInvokeSheet` (`widgets/command_invoke_sheet.dart`), a
+  modal with an inject/spawn mode toggle: inject targets an existing session (picker
+  backed by `sessionsProvider`); spawn takes a new session name, optional working dir,
+  and optional model (`opus`/`sonnet`/server-default). On submit it calls
+  `BastionApi.postCommand(CommandRequest)`, surfaces `ApiError`/`FatalAuthError`
+  inline, and on success pops the sheet with the server-returned session id, which
+  `QuickActionsScreen` uses to navigate to `/sessions/<name>`.
 
 ## Known contract gap
 
