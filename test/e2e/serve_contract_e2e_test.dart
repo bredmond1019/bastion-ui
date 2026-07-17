@@ -22,15 +22,6 @@ import 'package:bastion_ui/state/connection_provider.dart';
 
 import 'bastion_serve_harness.dart';
 
-/// [BastionSocket.dispose] awaits the transport's close, which for a
-/// socket that never completed its handshake (e.g. a fatal-auth 401
-/// during connect) can hang indefinitely on the underlying
-/// `IOWebSocketChannel.sink.close()`. Bound it here so a harness/transport
-/// quirk can't hang the whole e2e run — this is test-robustness, not a
-/// change to the production dispose() contract.
-Future<void> _disposeBounded(BastionSocket socket) =>
-    socket.dispose().timeout(const Duration(seconds: 5), onTimeout: () {});
-
 void main() {
   group('serve contract e2e', () {
     BastionServeHarness? harness;
@@ -114,7 +105,7 @@ void main() {
           await connected.timeout(const Duration(seconds: 10));
           expect(socket.status, ConnectionStatus.connected);
         } finally {
-          await _disposeBounded(socket);
+          await socket.dispose();
         }
 
         // --- Fatal auth (401): wrong token yields typed fatal-auth ------
@@ -132,7 +123,9 @@ void main() {
           );
           expect(wrongTokenSocket.isFatalAuth, isTrue);
         } finally {
-          await _disposeBounded(wrongTokenSocket);
+          // dispose() must return promptly even though this socket's handshake
+          // failed (401) — the production dispose() bounds the transport close.
+          await wrongTokenSocket.dispose();
         }
 
         final wrongTokenApi = BastionApi(

@@ -112,17 +112,31 @@ class BastionSocket {
     required String token,
     TransportFactory? transportFactory,
     Duration Function(int attempt)? backoffSchedule,
+    Duration? disposeCloseTimeout,
   }) : _host = host, // ignore: prefer_initializing_formals
        _port = port, // ignore: prefer_initializing_formals
        _token = token, // ignore: prefer_initializing_formals
        _transportFactory = transportFactory ?? _defaultTransportFactory,
-       _backoffSchedule = backoffSchedule ?? computeBackoff;
+       _backoffSchedule = backoffSchedule ?? computeBackoff,
+       _disposeCloseTimeout =
+           disposeCloseTimeout ?? _defaultDisposeCloseTimeout;
 
   final String _host;
   final int _port;
   final String _token;
   final TransportFactory _transportFactory;
   final Duration Function(int attempt) _backoffSchedule;
+
+  /// Upper bound on how long [dispose] waits for the transport to close.
+  ///
+  /// A transport whose WebSocket upgrade never completed (e.g. a fatal-auth
+  /// `401` during connect) can leave `IOWebSocketChannel.sink.close()` pending
+  /// forever; without a bound, [dispose] would hang the caller. Injectable so
+  /// unit tests can assert the bound without a real multi-second wait.
+  final Duration _disposeCloseTimeout;
+
+  /// Default [dispose] transport-close bound used in production.
+  static const Duration _defaultDisposeCloseTimeout = Duration(seconds: 5);
 
   // ---- Status stream ------------------------------------------------------
 
@@ -200,8 +214,15 @@ class BastionSocket {
     _reconnectTimer = null;
     await _sub?.cancel();
     _sub = null;
-    await _transport?.close();
+    // A transport whose handshake never completed (e.g. a fatal-auth 401
+    // during connect) can leave close() pending forever. Bound it so dispose()
+    // always completes promptly — hanging here would wedge navigation,
+    // reconnect-with-a-new-token, and app teardown.
+    final transport = _transport;
     _transport = null;
+    if (transport != null) {
+      await transport.close().timeout(_disposeCloseTimeout, onTimeout: () {});
+    }
     if (!_statusController.isClosed) await _statusController.close();
     if (!_frameController.isClosed) await _frameController.close();
   }
