@@ -18,10 +18,24 @@
 ///   - Expose [host]/[port]/[token] for constructing real `BastionApi` /
 ///     `BastionSocket` clients, and a [stop] teardown that kills the
 ///     process.
+///   - **Opt-in fixture-workspace seam** ([start]'s `workspaceFixture`
+///     param, default `false`): when requested, provisions a temp
+///     `XDG_CONFIG_HOME` root via `provisionWorkspaceFixture()` (see
+///     `test/e2e/fixtures/workspace_fixture.dart`) — a `[workspaces]`
+///     `config.toml` registry plus fixture repo trees — and merges
+///     `XDG_CONFIG_HOME=<tmp>` into the spawn env so the child `bastion
+///     serve` reads that registry instead of the user's real
+///     `~/.config/bastion/config.toml`. The no-fixture spawn env is
+///     unaffected (Phase 7 tests, which call `start()` with no fixture,
+///     stay byte-for-byte unchanged). [fixtureRepos] exposes the
+///     provisioned repo names to callers; the temp dir is removed
+///     (best-effort) in [stop].
 library;
 
 import 'dart:async';
 import 'dart:io';
+
+import 'fixtures/workspace_fixture.dart';
 
 /// The bearer token the harness spawns `bastion serve` with, and that test
 /// clients should use for authenticated requests.
@@ -96,7 +110,9 @@ final class BastionServeHarness {
     required this.port,
     required this.token,
     required this.process,
-  });
+    Directory? fixtureDir,
+    // ignore: prefer_initializing_formals
+  }) : _fixtureDir = fixtureDir;
 
   /// Host the server is bound to (always `127.0.0.1`).
   final String host;
@@ -108,6 +124,17 @@ final class BastionServeHarness {
   final String token;
 
   final Process process;
+
+  /// The provisioned fixture-workspace temp dir, if [start] was called with
+  /// `workspaceFixture: true`; `null` otherwise. Removed (best-effort) by
+  /// [stop].
+  final Directory? _fixtureDir;
+
+  /// Names of the fixture repos provisioned in the workspace registry, if
+  /// [start] was called with `workspaceFixture: true`; empty otherwise. Lets
+  /// callers avoid hardcoding the fixture repo names.
+  List<String> get fixtureRepos =>
+      _fixtureDir == null ? const [] : kFixtureRepoNames;
 
   /// Locate the `bastion` binary using the documented precedence:
   /// env `BASTION_BIN`, then `../bastion/target/release/bastion`, then
@@ -193,12 +220,27 @@ final class BastionServeHarness {
   ///
   /// Throws if a binary is found but the server fails to become ready
   /// within [readyTimeout] — that is a real harness failure, not a skip.
+  ///
+  /// When [workspaceFixture] is `true` (default `false`), provisions a temp
+  /// fixture workspace via `provisionWorkspaceFixture()` and spawns the
+  /// child with `XDG_CONFIG_HOME` pointed at it, so the server reads the
+  /// fixture `[workspaces]` registry instead of the user's real
+  /// `~/.config/bastion/config.toml`. When `false` (the default), the spawn
+  /// env is unchanged from before this seam existed.
   static Future<BastionServeHarness?> start({
     Duration readyTimeout = const Duration(seconds: 15),
+    bool workspaceFixture = false,
   }) async {
     final binaryPath = locateBinary();
     if (binaryPath == null) {
       return null;
+    }
+
+    Directory? fixtureDir;
+    final env = bastionServeHarnessChildEnvironment();
+    if (workspaceFixture) {
+      fixtureDir = await provisionWorkspaceFixture();
+      env['XDG_CONFIG_HOME'] = fixtureDir.path;
     }
 
     final port = await _allocateEphemeralPort();
@@ -211,7 +253,7 @@ final class BastionServeHarness {
         '--token',
         bastionServeHarnessTestToken,
       ],
-      environment: bastionServeHarnessChildEnvironment(),
+      environment: env,
       includeParentEnvironment: false,
     );
 
@@ -219,6 +261,13 @@ final class BastionServeHarness {
       await _waitForHealth(port: port, process: process, timeout: readyTimeout);
     } catch (_) {
       process.kill(ProcessSignal.sigkill);
+      if (fixtureDir != null) {
+        try {
+          await fixtureDir.delete(recursive: true);
+        } catch (_) {
+          // Best-effort cleanup — don't mask the original failure.
+        }
+      }
       rethrow;
     }
 
@@ -227,16 +276,24 @@ final class BastionServeHarness {
       port: port,
       token: bastionServeHarnessTestToken,
       process: process,
+      fixtureDir: fixtureDir,
     );
   }
 
-  /// Kill the spawned `bastion serve` process. Safe to call more than once.
+  /// Kill the spawned `bastion serve` process, then best-effort remove the
+  /// provisioned fixture-workspace temp dir (if any). Safe to call more
+  /// than once.
   Future<void> stop() async {
     process.kill(ProcessSignal.sigkill);
     try {
       await process.exitCode.timeout(const Duration(seconds: 5));
     } catch (_) {
       // Best-effort — the sigkill was already sent.
+    }
+    try {
+      await _fixtureDir?.delete(recursive: true);
+    } catch (_) {
+      // Best-effort — a delete error must never mask teardown.
     }
   }
 }
