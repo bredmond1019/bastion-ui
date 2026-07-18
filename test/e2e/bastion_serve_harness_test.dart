@@ -52,4 +52,56 @@ void main() {
       });
     }
   });
+
+  group('bastionServeHarnessChildEnvironment', () {
+    test('always includes PATH, defaulting to empty when absent', () {
+      expect(bastionServeHarnessChildEnvironment(const {}), {'PATH': ''});
+    });
+
+    test('forwards a present, non-empty PATH', () {
+      expect(bastionServeHarnessChildEnvironment(const {'PATH': '/usr/bin'}), {
+        'PATH': '/usr/bin',
+      });
+    });
+
+    test('forwards LANG and LC_ALL when present and non-empty', () {
+      expect(
+        bastionServeHarnessChildEnvironment(const {
+          'PATH': '/usr/bin',
+          'LANG': 'en_US.UTF-8',
+          'LC_ALL': 'C.UTF-8',
+        }),
+        {'PATH': '/usr/bin', 'LANG': 'en_US.UTF-8', 'LC_ALL': 'C.UTF-8'},
+      );
+    });
+
+    test('omits LANG/LC_ALL when absent from the parent environment', () {
+      expect(bastionServeHarnessChildEnvironment(const {'PATH': '/usr/bin'}), {
+        'PATH': '/usr/bin',
+      });
+    });
+
+    test('omits LANG/LC_ALL when present but empty', () {
+      expect(
+        bastionServeHarnessChildEnvironment(const {
+          'PATH': '/usr/bin',
+          'LANG': '',
+          'LC_ALL': '',
+        }),
+        {'PATH': '/usr/bin'},
+      );
+    });
+
+    test('never forwards DATABASE_URL or other engine-api-key vars', () {
+      expect(
+        bastionServeHarnessChildEnvironment(const {
+          'PATH': '/usr/bin',
+          'LANG': 'en_US.UTF-8',
+          'DATABASE_URL': 'postgres://example',
+          'BASTION_ENGINE_API_KEY': 'secret',
+        }),
+        {'PATH': '/usr/bin', 'LANG': 'en_US.UTF-8'},
+      );
+    });
+  });
 }

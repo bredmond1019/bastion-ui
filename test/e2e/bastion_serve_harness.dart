@@ -9,8 +9,10 @@
 ///   - Allocate an ephemeral port (bind `ServerSocket` to port 0, read the
 ///     assigned port, close it) — never hardcode 4317.
 ///   - Spawn `bastion serve --addr 127.0.0.1:<port> --token <token>` with an
-///     explicit environment map that leaves `DATABASE_URL` unset (the
-///     server is absent-tolerant and skips mounting the engine surface).
+///     explicit environment map ([bastionServeHarnessChildEnvironment]) that
+///     leaves `DATABASE_URL` unset (the server is absent-tolerant and skips
+///     mounting the engine surface) but forwards `PATH` and the locale vars
+///     `tmux` needs to format its output correctly.
 ///   - Poll `GET /health` until it returns 200, with a bounded timeout;
 ///     fail fast if the process exits before becoming ready.
 ///   - Expose [host]/[port]/[token] for constructing real `BastionApi` /
@@ -46,6 +48,45 @@ bool bastionE2eRequireBinary([Map<String, String>? environment]) {
   final env = environment ?? Platform.environment;
   final raw = env[bastionE2eRequireEnvVar]?.trim().toLowerCase();
   return raw == '1' || raw == 'true' || raw == 'yes' || raw == 'on';
+}
+
+/// Env var keys forwarded from the parent process into the spawned `bastion
+/// serve` child, in addition to `PATH` (which is always forwarded).
+///
+/// `LANG`/`LC_ALL` matter beyond cosmetics: without a UTF-8 locale, some
+/// `tmux` builds (observed on tmux 3.6b/macOS) silently substitute a
+/// non-tab byte for the tab field separator in `tmux list-sessions`'s
+/// custom-format output, which makes every line fail bastion's
+/// `parse_sessions`/`min 3 tab-separated fields` check and drops it —
+/// `GET /api/sessions` then always returns `[]`, even for sessions that
+/// really exist. Forwarding the parent's locale keeps the child's `tmux`
+/// invocations behaving the same way an interactive shell's would.
+const List<String> bastionServeHarnessForwardedEnvKeys = ['LANG', 'LC_ALL'];
+
+/// Builds the explicit environment map [BastionServeHarness.start] spawns
+/// `bastion serve` with, given the (real or test-double) parent
+/// [parentEnvironment] (defaults to [Platform.environment]).
+///
+/// Deliberately NOT the full inherited environment — `DATABASE_URL` and any
+/// engine-api-key vars are always left unset so the server stays DB-free
+/// per `bastion/src/serve/mod.rs`'s absent-tolerance. Only `PATH` (required
+/// to locate the `tmux` binary at all) and the locale vars in
+/// [bastionServeHarnessForwardedEnvKeys] (required for `tmux` to format its
+/// `-F` output correctly, see that constant's doc) are forwarded, and only
+/// when actually present (and non-empty for the locale vars) in
+/// [parentEnvironment].
+Map<String, String> bastionServeHarnessChildEnvironment([
+  Map<String, String>? parentEnvironment,
+]) {
+  final parent = parentEnvironment ?? Platform.environment;
+  final env = <String, String>{'PATH': parent['PATH'] ?? ''};
+  for (final key in bastionServeHarnessForwardedEnvKeys) {
+    final value = parent[key];
+    if (value != null && value.isNotEmpty) {
+      env[key] = value;
+    }
+  }
+  return env;
 }
 
 /// A running `bastion serve` subprocess ready to be driven by real clients.
@@ -170,12 +211,7 @@ final class BastionServeHarness {
         '--token',
         bastionServeHarnessTestToken,
       ],
-      environment: <String, String>{
-        // Explicit environment map (not the inherited one) — leaves
-        // DATABASE_URL and any engine-api-key vars unset so the server
-        // stays DB-free per bastion/src/serve/mod.rs absent-tolerance.
-        'PATH': Platform.environment['PATH'] ?? '',
-      },
+      environment: bastionServeHarnessChildEnvironment(),
       includeParentEnvironment: false,
     );
 
