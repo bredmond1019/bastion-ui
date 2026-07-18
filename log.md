@@ -2,7 +2,7 @@
 type: Log
 title: BastionUI Development Log
 description: Chronological log of work completed for BastionUI.
-timestamp: "2026-07-18T16:37:03Z"
+timestamp: "2026-07-18T19:13:29Z"
 ---
 
 # Log — BastionUI
@@ -12,6 +12,34 @@ timestamp: "2026-07-18T16:37:03Z"
 ---
 
 ## [2026-07-18]
+
+### BU.8.A closed: Fixture-registry repo read-surface e2e
+
+- **What:** Closed out block `BU.8.A` (`8.A-fixture-registry-repo-e2e`, Phase 8 — wire-contract
+  hardening). Ran via `/sdlc-task` in place on `main`; all 4 tasks passed on the first attempt:
+  - task1 (`c55436e`) — `test/e2e/fixtures/workspace_fixture.dart`: fixture content constants
+    (`status.md`/`handoff.md`/flow-state JSON copied verbatim from `bastion`'s parser-verified
+    fixtures) plus a `provisionWorkspaceFixture()` helper that materializes a temp
+    `XDG_CONFIG_HOME` `[workspaces]` registry with two fixture repos (one with
+    `handoff.md`+flow-state, one without), and a hermetic gating unit test
+    `workspace_fixture_test.dart`.
+  - task2 (`72263eb`) — opt-in `workspaceFixture` seam on `BastionServeHarness.start()`: provisions
+    the fixture env, merges `XDG_CONFIG_HOME`, exposes `fixtureRepos`, best-effort temp-dir cleanup
+    in `stop()` and on the ready-timeout path; the no-fixture (Phase 7) path is unchanged.
+  - task3 (`f438522`) — `test/e2e/repo_status_e2e_test.dart` (`e2e`-tagged): drives the real
+    `BastionApi` repo read-surface (`GET /api/repos`, `/status`, `/workflows`, `/handoff`) against
+    the fixture server, including the 404 → typed-null (C002) `handoff` branch.
+  - task4 — validation-only.
+  Close-out: gating suite green (`dart format` 0 changes, `flutter analyze` no issues, 292
+  unit/widget tests pass via `--exclude-tags e2e`), emoji gate OK, `/code-review low` found no
+  findings, `/update-docs --patch` found no STALE/MISSING (repo routes already documented in
+  `docs/api-reference.md:36-38` and `docs/architecture.md:144`). Test-only change — no product/lib
+  source changed.
+- **Why:** Phase 8 hardens end-to-end wire-contract coverage against a real `bastion serve`. This
+  block adds a hermetic fixture-workspace registry so e2e tests boot a real server against
+  machine-independent fixture repos, verifying the repo read-surface (esp. the C002 → null
+  `handoff` branch) at the wire level.
+- **Refs:** spec `planning/8.A-fixture-registry-repo-e2e/`; master-plan Phase 8.
 
 ### BU.7.C closed: Live WS pane frame decode e2e
 
