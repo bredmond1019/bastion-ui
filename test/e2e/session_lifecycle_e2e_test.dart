@@ -15,6 +15,7 @@ library;
 
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:bastion_ui/models/session_dto.dart';
 import 'package:bastion_ui/services/bastion_api.dart';
 
 import 'bastion_serve_harness.dart';
@@ -65,11 +66,62 @@ void main() {
 
         final api = BastionApi(host: h.host, port: h.port, token: h.token);
         try {
-          // TODO(BU.7.B task 2): fill in the lifecycle body — wrap in
-          // withManagedSession(api, (name) async { ... },
-          // name: 'bu7b-session-lifecycle-e2e') and drive
-          // createSession -> getSessions -> getPane -> sendKeys/sendKey ->
-          // getPane (bounded poll) -> deleteSession -> getSessions.
+          await withManagedSession(api, (name) async {
+            // (1) The created session appears in the session list.
+            final sessionsAfterCreate = await api.getSessions();
+            expect(
+              sessionsAfterCreate.map((s) => s.name),
+              contains(name),
+              reason: 'created session "$name" should appear in getSessions',
+            );
+
+            // (2) Reading the pane works and exercises the `?lines` param.
+            final initialPane = await api.getPane(name, lines: 50);
+            expect(initialPane, isA<PaneDto>());
+            expect(initialPane.sessionName, name);
+
+            // (3) Drive the session with a literal key sequence + Enter key.
+            const marker = 'bastionui-e2e-marker';
+            await api.sendKeys(name, 'echo $marker');
+            await api.sendKey(name, 'Enter');
+
+            // (4) Bounded poll: wait for the marker to be reflected in the
+            // pane output rather than asserting on a single read, since
+            // real-process pane output can lag a sent key.
+            const pollTimeout = Duration(seconds: 15);
+            const pollInterval = Duration(milliseconds: 500);
+            final deadline = DateTime.now().add(pollTimeout);
+            var found = false;
+            while (DateTime.now().isBefore(deadline)) {
+              final pane = await api.getPane(name);
+              if (pane.lines.any((line) => line.contains(marker))) {
+                found = true;
+                break;
+              }
+              await Future<void>.delayed(pollInterval);
+            }
+            expect(
+              found,
+              isTrue,
+              reason:
+                  'expected pane output for "$name" to contain "$marker" '
+                  'within $pollTimeout, but it never appeared',
+            );
+
+            // (5) Delete the session and confirm it is gone. The
+            // withManagedSession `finally` will issue a second, best-effort
+            // deleteSession — a harmless no-op — after this callback
+            // returns.
+            await api.deleteSession(name);
+            final sessionsAfterDelete = await api.getSessions();
+            expect(
+              sessionsAfterDelete.map((s) => s.name),
+              isNot(contains(name)),
+              reason:
+                  'deleted session "$name" should no longer appear in '
+                  'getSessions',
+            );
+          }, name: 'bu7b-session-lifecycle-e2e');
         } finally {
           api.dispose();
         }
