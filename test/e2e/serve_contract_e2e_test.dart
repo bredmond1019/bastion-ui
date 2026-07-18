@@ -39,11 +39,20 @@ void main() {
         harness = await BastionServeHarness.start();
         final h = harness;
         if (h == null) {
+          const whereChecked =
+              'checked BASTION_BIN, ../bastion/target/release/bastion, '
+              '../bastion/target/debug/bastion';
+          if (bastionE2eRequireBinary()) {
+            fail(
+              '$bastionE2eRequireEnvVar is set but no bastion binary could '
+              'be located ($whereChecked) — build one with '
+              '`cargo build -p bastion` in ../bastion, or set BASTION_BIN.',
+            );
+          }
           markTestSkipped(
-            'no bastion binary found (checked BASTION_BIN, '
-            '../bastion/target/release/bastion, '
-            '../bastion/target/debug/bastion) — skipping service-level '
-            'e2e test',
+            'no bastion binary found ($whereChecked) — skipping '
+            'service-level e2e test (set $bastionE2eRequireEnvVar=1 to make '
+            'this a hard failure instead)',
           );
           return;
         }

@@ -28,6 +28,26 @@ const String bastionServeHarnessTestToken = 'e2e-test-token';
 /// A deliberately-wrong token for driving the fatal-auth (401) path.
 const String bastionServeHarnessWrongToken = 'e2e-wrong-token';
 
+/// Env var that flips the e2e test from silent self-skip to hard failure
+/// when no `bastion` binary can be located. Set it (to a truthy value) in
+/// CI or any run that must guarantee the service-level e2e actually ran,
+/// rather than green-because-skipped.
+const String bastionE2eRequireEnvVar = 'BASTION_E2E_REQUIRE';
+
+/// Whether strict mode is enabled: a missing `bastion` binary should be a
+/// hard failure rather than a skip. Controlled by [bastionE2eRequireEnvVar];
+/// truthy values are `1`, `true`, `yes`, `on` (case- and whitespace-
+/// insensitive). Anything else (including unset/empty) leaves the default
+/// self-skip behavior in place.
+///
+/// Pass [environment] to test the parse in isolation; defaults to the real
+/// process environment.
+bool bastionE2eRequireBinary([Map<String, String>? environment]) {
+  final env = environment ?? Platform.environment;
+  final raw = env[bastionE2eRequireEnvVar]?.trim().toLowerCase();
+  return raw == '1' || raw == 'true' || raw == 'yes' || raw == 'on';
+}
+
 /// A running `bastion serve` subprocess ready to be driven by real clients.
 final class BastionServeHarness {
   BastionServeHarness._({
