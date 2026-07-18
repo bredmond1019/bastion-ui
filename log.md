@@ -2,7 +2,7 @@
 type: Log
 title: BastionUI Development Log
 description: Chronological log of work completed for BastionUI.
-timestamp: "2026-07-18T04:12:10Z"
+timestamp: "2026-07-18T16:37:03Z"
 ---
 
 # Log — BastionUI
@@ -12,6 +12,18 @@ timestamp: "2026-07-18T04:12:10Z"
 ---
 
 ## [2026-07-18]
+
+### BU.7.C closed: Live WS pane frame decode e2e
+
+- **What:** Closed out block `BU.7.C` (`7.C-ws-live-frame-e2e`, Phase 7 — E2E coverage, D34 seam).
+  Added `test/e2e/ws_live_frame_e2e_test.dart` — the only end-to-end exercise of
+  `models/frame.dart`'s envelope decode against a real `bastion serve` frame delivered over a live
+  WS pane subscription. Self-skips when no `bastion` binary or tmux is present. Gating suite green
+  (`dart format` clean, `flutter analyze` clean, 287 unit/widget tests pass). Code review clean; no
+  doc changes needed (test-only change).
+- **Why:** Completes the Phase 7 E2E coverage seam by giving the frame decode path a live-wire test
+  against a real serve frame, complementing `BU.7.B`'s session-lifecycle round-trip.
+- **Refs:** spec `planning/7.C-ws-live-frame-e2e/`; master-plan Phase 7 (D34 seam).
 
 ### BU.7.B closed: Session lifecycle round-trip e2e
 
