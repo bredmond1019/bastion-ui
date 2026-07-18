@@ -83,13 +83,34 @@ void main() {
           await connected.timeout(const Duration(seconds: 10));
           expect(socket.status, ConnectionStatus.connected);
 
-          // TODO(BU.7.C task 2): subscribe to the live session's pane:<name>
-          // topic via subscribeAndCollect, drive output into the session,
-          // and assert a real pane BastionFrame decodes with populated
-          // fields. Reference paneTopic/PaneFrame here so the imports are
-          // exercised until task 2 fills in the body.
-          expect(paneTopic('placeholder'), 'pane:placeholder');
-          expect(PaneFrame, isNotNull);
+          await withManagedSession(api, (name) async {
+            // (1) Kick off the collector — do NOT await yet — so it is
+            // listening before any output is produced by the drive step
+            // below. This avoids a subscribe-then-listen race.
+            final collected = subscribeAndCollect(
+              socket,
+              topic: paneTopic(name),
+              count: 1,
+              timeout: const Duration(seconds: 20),
+            );
+
+            // (2) Drive output into the session so a `pane` frame is
+            // pushed.
+            await api.sendKeys(name, 'echo bastionui-ws-e2e-marker');
+            await api.sendKey(name, 'Enter');
+
+            // (3) Await the collected frame(s).
+            final frames = await collected;
+            expect(frames, isNotEmpty);
+            expect(frames.first, isA<PaneFrame>());
+
+            // (4) Assert the envelope decoded with populated fields.
+            final frame = frames.first as PaneFrame;
+            expect(frame.session, name);
+            expect(frame.seq, isA<int>());
+            expect(frame.seq, greaterThanOrEqualTo(0));
+            expect(frame.lines, isA<List<String>>());
+          }, name: 'bu7c-ws-live-frame-e2e');
         } finally {
           await socket.dispose();
           api.dispose();
