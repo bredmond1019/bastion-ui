@@ -2,7 +2,7 @@
 type: Log
 title: BastionUI Development Log
 description: Chronological log of work completed for BastionUI.
-timestamp: "2026-07-17T23:10:00Z"
+timestamp: "2026-07-18T04:12:10Z"
 ---
 
 # Log — BastionUI
@@ -10,6 +10,45 @@ timestamp: "2026-07-17T23:10:00Z"
 *Append-only working log. One dated entry per session. Newest entries at the top.*
 
 ---
+
+## [2026-07-18]
+
+### BU.7.B closed: Session lifecycle round-trip e2e
+
+- **What:** Ran `/sdlc-task 7.B-session-lifecycle-e2e` in place on `main`, closing block `BU.7.B`
+  (Phase 7 — E2E coverage, D34 seam). Added `test/e2e/session_lifecycle_e2e_test.dart`, an
+  `@Tags(['e2e'])` test that drives the full create → list → pane → sendKeys/sendKey →
+  bounded-poll pane → delete → gone round-trip against a real `bastion serve` subprocess, built on
+  top of `BU.7.A`'s `withManagedSession()`/`subscribeAndCollect()` helpers. All 3 tasks passed:
+  task1 + task2 (commits `28f6544`, `4d9daea`) wrote the e2e test itself. Task 3 (validate) found
+  that the manual `flutter test --tags e2e` check genuinely failed (not via self-skip) with a built
+  `bastion` binary + tmux present — traced to a real bug: `BastionServeHarness` spawned `bastion
+  serve` with `includeParentEnvironment: false` and only `PATH` set, and without a UTF-8 locale
+  some tmux builds (observed tmux 3.6b/macOS) corrupt the tab field separator in `tmux
+  list-sessions -F <fmt>` output, so bastion's session parser silently drops every line and
+  `GET /api/sessions` always returns `[]`. Fixed (commit `6e0273b`) by extracting a pure,
+  unit-tested `bastionServeHarnessChildEnvironment()` helper in
+  `test/e2e/bastion_serve_harness.dart` (forwards `PATH` always, `LANG`/`LC_ALL` when
+  present+non-empty, still omits `DATABASE_URL`/engine-api-key vars) with 6 new gating unit tests
+  in `bastion_serve_harness_test.dart`. This is a local workaround only — the underlying `bastion`
+  (Rust) binary's locale-sensitive tmux parsing is still unfixed upstream.
+
+  `/close-out` ran afterward (in place on `main`, no worktree to merge): gating suite green
+  (`dart format` clean, `flutter analyze` clean, `flutter test --exclude-tags e2e` — 287 tests all
+  passed); emoji gate clean; coverage gap scan found no blocking gaps (the new helper has 6 direct
+  unit tests; the third changed file is an e2e test itself); `/code-review low` found no findings
+  (all 3 changed files are under `test/e2e/`, skipped entirely by that review level's rules);
+  `/update-docs --patch` found no STALE or MISSING items (e2e harness docs stay at their
+  established location — `planning/harness.json`'s comment field + `CLAUDE.md` — not duplicated
+  into `docs/`). Added a new `deferred`/`cross_repo` `carryover[]` entry in `planning/state.json`,
+  `bastion-tmux-locale-sensitive-session-parsing`, documenting the underlying `bastion` binary
+  robustness gap for a future session (in the `bastion` repo) to pick up. Wrote
+  `planning/handoff.md` for the next session (next up: `BU.4.A` polish + v0.1 tag; re-verify the
+  serve-api v1.0.0 pin first).
+- **Why:** Phase 7's e2e coverage work — `BU.7.B` exercises the core session lifecycle round-trip
+  against a real `bastion serve` process (not mocks), catching wire-contract drift the unit/widget
+  test suite can't. Follows directly from `BU.7.A` (e2e support helpers) closing last session.
+- **Refs:** spec at `planning/7.B-session-lifecycle-e2e/`; commits `28f6544`, `4d9daea`, `6e0273b`
 
 ## [2026-07-17]
 
