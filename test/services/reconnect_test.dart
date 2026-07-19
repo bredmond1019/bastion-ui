@@ -25,6 +25,10 @@ class FakeWsTransport implements WsTransport {
   final List<String> sent = [];
   bool closed = false;
 
+  /// When `true`, [close] never completes — simulates
+  /// `IOWebSocketChannel.sink.close()` hanging after a failed WS upgrade.
+  bool hangOnClose = false;
+
   // ---- Test helpers -------------------------------------------------------
 
   void completeReady() {
@@ -61,6 +65,12 @@ class FakeWsTransport implements WsTransport {
   @override
   Future<void> close() async {
     closed = true;
+    if (hangOnClose) {
+      // Never completes — models a transport whose handshake failed and whose
+      // underlying sink.close() hangs forever.
+      await Completer<void>().future;
+      return;
+    }
     if (!_controller.isClosed) await _controller.close();
   }
 }
@@ -409,6 +419,40 @@ void main() {
       socket.connect();
       await pump();
       expect(transports, hasLength(1));
+    });
+
+    test('dispose() completes even when the transport close() hangs '
+        '(fatal-auth 401 path)', () async {
+      final transports = <FakeWsTransport>[];
+      final socket = BastionSocket(
+        host: 'test-host',
+        port: 4317,
+        token: 'test-token',
+        transportFactory: (uri, {headers}) {
+          final t = FakeWsTransport()..hangOnClose = true;
+          transports.add(t);
+          return t;
+        },
+        backoffSchedule: (_) => Duration.zero,
+        // Short bound so the test asserts the timeout path fast.
+        disposeCloseTimeout: const Duration(milliseconds: 50),
+      );
+
+      socket.connect();
+      // Simulate the server rejecting the bearer token: the handshake fails
+      // with a 401, which leaves _transport assigned and its close() hung.
+      transports[0].failReady('WebSocketException: 401 unauthorized');
+      await pump();
+      expect(socket.isFatalAuth, isTrue);
+
+      // dispose() must not hang on the never-completing close(): bound it so
+      // the whole call resolves well under the outer test timeout.
+      await socket.dispose().timeout(
+        const Duration(seconds: 2),
+        onTimeout: () => fail('dispose() hung on a stuck transport close()'),
+      );
+
+      expect(transports[0].closed, isTrue);
     });
   });
 }

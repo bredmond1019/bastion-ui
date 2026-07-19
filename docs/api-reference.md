@@ -61,10 +61,23 @@ Manages `ws://<host>:<port>/ws` with capped exponential backoff reconnect (1s, 2
 - `statusStream` — `Stream<ConnectionStatus>` (`disconnected` / `connecting` /
   `connected` / `reconnecting`), delivered synchronously.
 - `frames` — `Stream<BastionFrame>`, decoded via `BastionFrame.fromJson`.
-- `isFatalAuth` — `true` after a 401/unauthorized/forbidden error on the handshake or
-  in-stream; reconnect stops permanently (construct a new instance to retry).
-- `send(Map<String, dynamic> json)` — no-op unless `status == connected`.
+- `isFatalAuth` — `true` after a 401/unauthorized/forbidden error on the handshake, or
+  after **any** `WebSocketException` on the handshake path (a rejected `/ws` upgrade throws
+  `WebSocketException` with no status code in its message, so the substring check alone
+  can't see it — `bastion serve` only ever refuses the `/ws` upgrade for auth reasons), or
+  an auth error in-stream; reconnect stops permanently (construct a new instance to retry).
+  Non-`WebSocketException` handshake failures (refused connections, DNS/socket errors,
+  timeouts) are treated as transient and still schedule a normal backoff reconnect.
+- `send(Map<String, dynamic> json)` — no-op unless `status == connected`; `subscribe`/
+  `unsubscribe` frames are tracked in an active-topic registry regardless of connection
+  state, so intent-to-subscribe survives a transient drop.
+- Reconnect resubscribe — on every successful connect *after* the first, the socket
+  replays a `subscribe` frame for each still-active topic (insertion order), so live
+  `sessions`/`pane:<name>` streams don't go silent after a reconnect. The very first
+  connect never replays (callers already subscribe once in their constructors).
 - `connect()` / `dispose()` — lifecycle; the instance cannot be reused after `dispose()`.
+  `dispose()` bounds the underlying transport close with a timeout (default 5s), so a socket
+  whose handshake failed (fatal-auth 401) can never hang teardown, reconnect, or navigation.
 
 ### `BastionFrame` kinds (`lib/models/frame.dart`)
 

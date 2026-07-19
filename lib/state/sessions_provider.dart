@@ -31,6 +31,7 @@ import '../models/frame.dart';
 import '../models/session_dto.dart';
 import '../services/bastion_api.dart';
 import '../services/bastion_socket.dart';
+import '../state/connection_provider.dart' show ConnectionStatus;
 
 /// WS topic name for the live sessions snapshot stream (serve-api v0.2).
 const sessionsTopic = 'sessions';
@@ -98,11 +99,38 @@ class SessionsNotifier extends StateNotifier<List<SessionDto>> {
         .cast<SessionsFrame>()
         .debounceTime(const Duration(milliseconds: 150))
         .listen(_onFrame);
+    // Re-run the REST seed on every reconnect (transition *into* `connected`
+    // after the socket's first connect) — the socket itself replays the WS
+    // `subscribe` frame (see bastion_socket.dart), but the REST buffer this
+    // notifier seeded before the drop can now be stale, so it needs a fresh
+    // `_seed()` too. The first connect must NOT double-seed (the ctor above
+    // already called `_seed()` once), hence the `_everConnected` gate — seeded
+    // from the socket's *current* status at subscribe time, since the socket
+    // (and its first connect) normally already exists before this notifier
+    // is constructed (`sessionsProvider` throws if read before the socket is
+    // set/connected), so any "connected" transition this stream observes is
+    // necessarily a reconnect in that common case.
+    _everConnected = _socket.status == ConnectionStatus.connected;
+    _statusSub = _socket.statusStream.listen((status) {
+      if (status == ConnectionStatus.connected) {
+        if (_everConnected) {
+          _seed();
+        }
+        _everConnected = true;
+      }
+    });
   }
 
   final BastionSocket _socket;
   final BastionApi _api;
   StreamSubscription<SessionsFrame>? _sub;
+  StreamSubscription<ConnectionStatus>? _statusSub;
+
+  /// `true` once the socket has completed at least one successful connect —
+  /// guards against re-seeding on the very first connect (already handled by
+  /// the constructor's direct `_seed()` call). Set from the socket's current
+  /// status at construction time (see the constructor body).
+  bool _everConnected = false;
 
   /// `true` once the first WS `sessions` snapshot has been applied — after
   /// that point the (possibly slower) REST seed must never overwrite newer
@@ -130,6 +158,7 @@ class SessionsNotifier extends StateNotifier<List<SessionDto>> {
   void dispose() {
     _socket.send(ClientFrames.unsubscribe(sessionsTopic));
     _sub?.cancel();
+    _statusSub?.cancel();
     super.dispose();
   }
 }

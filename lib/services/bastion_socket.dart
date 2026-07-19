@@ -14,6 +14,7 @@ library;
 
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io' show WebSocketException;
 
 import 'package:web_socket_channel/io.dart';
 
@@ -112,17 +113,31 @@ class BastionSocket {
     required String token,
     TransportFactory? transportFactory,
     Duration Function(int attempt)? backoffSchedule,
+    Duration? disposeCloseTimeout,
   }) : _host = host, // ignore: prefer_initializing_formals
        _port = port, // ignore: prefer_initializing_formals
        _token = token, // ignore: prefer_initializing_formals
        _transportFactory = transportFactory ?? _defaultTransportFactory,
-       _backoffSchedule = backoffSchedule ?? computeBackoff;
+       _backoffSchedule = backoffSchedule ?? computeBackoff,
+       _disposeCloseTimeout =
+           disposeCloseTimeout ?? _defaultDisposeCloseTimeout;
 
   final String _host;
   final int _port;
   final String _token;
   final TransportFactory _transportFactory;
   final Duration Function(int attempt) _backoffSchedule;
+
+  /// Upper bound on how long [dispose] waits for the transport to close.
+  ///
+  /// A transport whose WebSocket upgrade never completed (e.g. a fatal-auth
+  /// `401` during connect) can leave `IOWebSocketChannel.sink.close()` pending
+  /// forever; without a bound, [dispose] would hang the caller. Injectable so
+  /// unit tests can assert the bound without a real multi-second wait.
+  final Duration _disposeCloseTimeout;
+
+  /// Default [dispose] transport-close bound used in production.
+  static const Duration _defaultDisposeCloseTimeout = Duration(seconds: 5);
 
   // ---- Status stream ------------------------------------------------------
 
@@ -166,6 +181,21 @@ class BastionSocket {
   int _attempt = 0;
   Timer? _reconnectTimer;
 
+  // ---- Active-subscription registry ---------------------------------------
+  //
+  // Tracks topics currently subscribed (via the existing send() path) so a
+  // transient drop can replay them on the *next* successful reconnect — the
+  // notifiers' constructors only ever subscribe once, so without this replay
+  // their live streams would go silent after a reconnect. A [LinkedHashSet]
+  // (the default for a `{}` Set literal) preserves insertion order, giving a
+  // deterministic replay order.
+  final Set<String> _activeTopics = {};
+
+  /// `true` once the socket has completed at least one successful connect.
+  /// Replay only happens on the *next* connect after this becomes `true` —
+  /// never on the very first connect (the notifiers already subscribe then).
+  bool _everConnected = false;
+
   // ---- Public API ---------------------------------------------------------
 
   /// Begin (or resume) the connection lifecycle.
@@ -186,6 +216,7 @@ class BastionSocket {
   ///
   /// No-op if not currently [ConnectionStatus.connected].
   void send(Map<String, dynamic> json) {
+    _trackSubscription(json);
     if (_status == ConnectionStatus.connected) {
       _transport?.send(jsonEncode(json));
     }
@@ -200,8 +231,15 @@ class BastionSocket {
     _reconnectTimer = null;
     await _sub?.cancel();
     _sub = null;
-    await _transport?.close();
+    // A transport whose handshake never completed (e.g. a fatal-auth 401
+    // during connect) can leave close() pending forever. Bound it so dispose()
+    // always completes promptly — hanging here would wedge navigation,
+    // reconnect-with-a-new-token, and app teardown.
+    final transport = _transport;
     _transport = null;
+    if (transport != null) {
+      await transport.close().timeout(_disposeCloseTimeout, onTimeout: () {});
+    }
     if (!_statusController.isClosed) await _statusController.close();
     if (!_frameController.isClosed) await _frameController.close();
   }
@@ -254,7 +292,7 @@ class BastionSocket {
       await transport.ready;
     } catch (e) {
       if (_disposed) return;
-      if (_isAuthError(e)) {
+      if (_isFatalHandshakeError(e)) {
         _fatalAuth = true;
         _setStatus(ConnectionStatus.disconnected);
         return;
@@ -268,6 +306,17 @@ class BastionSocket {
     // Handshake succeeded — reset attempt counter and mark connected.
     _attempt = 0;
     _setStatus(ConnectionStatus.connected);
+
+    // Replay active subscriptions on every reconnect (i.e. every successful
+    // connect *after* the first) so live streams don't go silent — but never
+    // on the very first connect, since the notifiers' constructors already
+    // subscribe once themselves.
+    if (_everConnected) {
+      for (final topic in _activeTopics) {
+        transport.send(jsonEncode(ClientFrames.subscribe(topic)));
+      }
+    }
+    _everConnected = true;
 
     _sub = transport.messageStream.listen(
       _handleMessage,
@@ -310,12 +359,47 @@ class BastionSocket {
     _frameController.add(frame);
   }
 
+  /// Records a `subscribe`/`unsubscribe` frame in the active-subscription
+  /// registry so it can be replayed on the next reconnect. No-op for any
+  /// other frame kind, and safe if the payload/topic is missing or malformed
+  /// (nothing to track).
+  void _trackSubscription(Map<String, dynamic> json) {
+    final kind = json['kind'];
+    final payload = json['payload'];
+    if (payload is! Map || payload['topic'] is! String) return;
+    final topic = payload['topic'] as String;
+    if (kind == 'subscribe') {
+      _activeTopics.add(topic);
+    } else if (kind == 'unsubscribe') {
+      _activeTopics.remove(topic);
+    }
+  }
+
   /// Heuristic check for auth-related errors.
   bool _isAuthError(Object error) {
     final msg = error.toString().toLowerCase();
     return msg.contains('401') ||
         msg.contains('unauthorized') ||
         msg.contains('forbidden');
+  }
+
+  /// Fatal-auth detection for the **handshake path only** (`transport.ready`
+  /// failures during `_doConnect`).
+  ///
+  /// A dart:io WebSocket upgrade rejected with HTTP 401 throws a
+  /// [WebSocketException] whose message ("Connection ... was not upgraded to
+  /// websocket") carries **no status code at all** — so [_isAuthError]'s
+  /// substring match never fires and a bad bearer token would loop on backoff
+  /// forever. `bastion serve` only refuses the `/ws` upgrade for auth reasons
+  /// (Standing Rule 6 — no other route can reject the handshake this way), so
+  /// any handshake-time [WebSocketException] is treated as fatal auth here.
+  /// Genuinely transient failures (refused connections, DNS/socket errors,
+  /// timeouts) surface as other exception types (e.g. [SocketException],
+  /// [TimeoutException]) and are unaffected — they still schedule a normal
+  /// reconnect.
+  bool _isFatalHandshakeError(Object error) {
+    if (_isAuthError(error)) return true;
+    return error is WebSocketException;
   }
 
   void _scheduleReconnect() {

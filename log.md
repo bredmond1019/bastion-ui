@@ -2,7 +2,7 @@
 type: Log
 title: BastionUI Development Log
 description: Chronological log of work completed for BastionUI.
-timestamp: "2026-07-17T04:25:10Z"
+timestamp: "2026-07-18T19:13:29Z"
 ---
 
 # Log — BastionUI
@@ -11,7 +11,183 @@ timestamp: "2026-07-17T04:25:10Z"
 
 ---
 
+## [2026-07-18]
+
+### BU.0.A-ccf closed: Reconnect resilience — resubscribe + re-seed + fatal 401
+
+- **What:** Closed out block `BU.0.A-ccf` (`plan-client-contract-fixes`, Phase 0 — ad-hoc client
+  contract fixes, D34 seam). Ran via `/sdlc-flow` on branch `plan-client-contract-fixes-flow`; all
+  5 tasks passed on the first attempt, end-of-run review verdict **PASS**:
+  - task1 — `lib/services/bastion_socket.dart`: `BastionSocket` now tracks active
+    subscribe/unsubscribe topics via the existing `send()` path (a `Set<String>` registry) and
+    replays a `subscribe` frame for every still-active topic on each successful reconnect (never on
+    the first connect), so live WS streams survive a transient tailnet drop without a manual
+    navigate-away/back. New test `test/services/reconnect_resubscribe_test.dart`.
+  - task2 — same file: a handshake-time `WebSocketException` thrown by `transport.ready` (e.g. a
+    401 `/ws` upgrade rejection whose message carries no numeric status code) is now detected as
+    fatal auth via a new handshake-path-only `_isFatalHandshakeError`, stopping reconnect, while the
+    existing substring-based `_isAuthError` on the in-stream `onError` path is unchanged and
+    genuinely transient handshake failures still back off normally.
+  - task3 — `lib/state/sessions_provider.dart`: `SessionsNotifier` subscribes to the socket's
+    `statusStream` and re-runs `_seed()` on a reconnect transition (into `connected` after the
+    first connect, tracked via an `_everConnected` flag seeded from the socket's status at listener
+    attach time), preserving the `_sawWsSnapshot` precedence guard and cancelling the status
+    subscription in `dispose()`.
+  - task4 — `lib/state/pane_provider.dart`: mirrored the same reconnect re-seed pattern in
+    `PaneNotifier`, preserving the `_sawWsFrame`/`_lastSeq` precedence guards.
+  - task5 — validation-only; gating suite reconfirmed green with no code changes.
+  Close-out: gating suite green (`dart format` clean, `flutter analyze` clean, `flutter test
+  --exclude-tags e2e` green), end-of-run review PASS (no findings), doc patch applied to
+  `docs/api-reference.md` and `docs/architecture.md`.
+- **Why:** A 2026-07-18 four-agent client⇄server contract audit found three genuine client-side
+  defects; this block fixes the highest-severity one — live streams going silent after any
+  reconnect — plus the infinite-reconnect-loop-on-bad-token defect, both scoped to
+  `bastion_socket.dart` and the two REST-seeding notifiers. The other two blocks in the same ad-hoc
+  plan (`BU.0.B-ccf` — decouple repo status + workflows fetch, `BU.0.C-ccf` — bump the serve-api pin
+  label v0.4→v0.5) are unaffected (disjoint files, no `depends_on`) and remain open for a future
+  pass.
+- **Next:** `BU.4.A` (polish + v0.1 tag) remains next in the master-plan sequence; `BU.0.B-ccf` and
+  `BU.0.C-ccf` remain open in the `plan-client-contract-fixes` ad-hoc plan.
+
+```
+ec14a2e docs: update docs for plan-client-contract-fixes
+137a20a docs: sync GEMINI.md with CLAUDE.md
+b8dddff feat: implement plan-client-contract-fixes-task4
+0fdec31 feat: implement plan-client-contract-fixes-task3
+16907b1 feat: implement plan-client-contract-fixes-task2
+ebae056 feat: implement plan-client-contract-fixes-task1
+12911d4 docs: log BU.8.A fixture-registry-repo-e2e close-out
+```
+
+### BU.8.A closed: Fixture-registry repo read-surface e2e
+
+- **What:** Closed out block `BU.8.A` (`8.A-fixture-registry-repo-e2e`, Phase 8 — wire-contract
+  hardening). Ran via `/sdlc-task` in place on `main`; all 4 tasks passed on the first attempt:
+  - task1 (`c55436e`) — `test/e2e/fixtures/workspace_fixture.dart`: fixture content constants
+    (`status.md`/`handoff.md`/flow-state JSON copied verbatim from `bastion`'s parser-verified
+    fixtures) plus a `provisionWorkspaceFixture()` helper that materializes a temp
+    `XDG_CONFIG_HOME` `[workspaces]` registry with two fixture repos (one with
+    `handoff.md`+flow-state, one without), and a hermetic gating unit test
+    `workspace_fixture_test.dart`.
+  - task2 (`72263eb`) — opt-in `workspaceFixture` seam on `BastionServeHarness.start()`: provisions
+    the fixture env, merges `XDG_CONFIG_HOME`, exposes `fixtureRepos`, best-effort temp-dir cleanup
+    in `stop()` and on the ready-timeout path; the no-fixture (Phase 7) path is unchanged.
+  - task3 (`f438522`) — `test/e2e/repo_status_e2e_test.dart` (`e2e`-tagged): drives the real
+    `BastionApi` repo read-surface (`GET /api/repos`, `/status`, `/workflows`, `/handoff`) against
+    the fixture server, including the 404 → typed-null (C002) `handoff` branch.
+  - task4 — validation-only.
+  Close-out: gating suite green (`dart format` 0 changes, `flutter analyze` no issues, 292
+  unit/widget tests pass via `--exclude-tags e2e`), emoji gate OK, `/code-review low` found no
+  findings, `/update-docs --patch` found no STALE/MISSING (repo routes already documented in
+  `docs/api-reference.md:36-38` and `docs/architecture.md:144`). Test-only change — no product/lib
+  source changed.
+- **Why:** Phase 8 hardens end-to-end wire-contract coverage against a real `bastion serve`. This
+  block adds a hermetic fixture-workspace registry so e2e tests boot a real server against
+  machine-independent fixture repos, verifying the repo read-surface (esp. the C002 → null
+  `handoff` branch) at the wire level.
+- **Refs:** spec `planning/8.A-fixture-registry-repo-e2e/`; master-plan Phase 8.
+
+### BU.7.C closed: Live WS pane frame decode e2e
+
+- **What:** Closed out block `BU.7.C` (`7.C-ws-live-frame-e2e`, Phase 7 — E2E coverage, D34 seam).
+  Added `test/e2e/ws_live_frame_e2e_test.dart` — the only end-to-end exercise of
+  `models/frame.dart`'s envelope decode against a real `bastion serve` frame delivered over a live
+  WS pane subscription. Self-skips when no `bastion` binary or tmux is present. Gating suite green
+  (`dart format` clean, `flutter analyze` clean, 287 unit/widget tests pass). Code review clean; no
+  doc changes needed (test-only change).
+- **Why:** Completes the Phase 7 E2E coverage seam by giving the frame decode path a live-wire test
+  against a real serve frame, complementing `BU.7.B`'s session-lifecycle round-trip.
+- **Refs:** spec `planning/7.C-ws-live-frame-e2e/`; master-plan Phase 7 (D34 seam).
+
+### BU.7.B closed: Session lifecycle round-trip e2e
+
+- **What:** Ran `/sdlc-task 7.B-session-lifecycle-e2e` in place on `main`, closing block `BU.7.B`
+  (Phase 7 — E2E coverage, D34 seam). Added `test/e2e/session_lifecycle_e2e_test.dart`, an
+  `@Tags(['e2e'])` test that drives the full create → list → pane → sendKeys/sendKey →
+  bounded-poll pane → delete → gone round-trip against a real `bastion serve` subprocess, built on
+  top of `BU.7.A`'s `withManagedSession()`/`subscribeAndCollect()` helpers. All 3 tasks passed:
+  task1 + task2 (commits `28f6544`, `4d9daea`) wrote the e2e test itself. Task 3 (validate) found
+  that the manual `flutter test --tags e2e` check genuinely failed (not via self-skip) with a built
+  `bastion` binary + tmux present — traced to a real bug: `BastionServeHarness` spawned `bastion
+  serve` with `includeParentEnvironment: false` and only `PATH` set, and without a UTF-8 locale
+  some tmux builds (observed tmux 3.6b/macOS) corrupt the tab field separator in `tmux
+  list-sessions -F <fmt>` output, so bastion's session parser silently drops every line and
+  `GET /api/sessions` always returns `[]`. Fixed (commit `6e0273b`) by extracting a pure,
+  unit-tested `bastionServeHarnessChildEnvironment()` helper in
+  `test/e2e/bastion_serve_harness.dart` (forwards `PATH` always, `LANG`/`LC_ALL` when
+  present+non-empty, still omits `DATABASE_URL`/engine-api-key vars) with 6 new gating unit tests
+  in `bastion_serve_harness_test.dart`. This is a local workaround only — the underlying `bastion`
+  (Rust) binary's locale-sensitive tmux parsing is still unfixed upstream.
+
+  `/close-out` ran afterward (in place on `main`, no worktree to merge): gating suite green
+  (`dart format` clean, `flutter analyze` clean, `flutter test --exclude-tags e2e` — 287 tests all
+  passed); emoji gate clean; coverage gap scan found no blocking gaps (the new helper has 6 direct
+  unit tests; the third changed file is an e2e test itself); `/code-review low` found no findings
+  (all 3 changed files are under `test/e2e/`, skipped entirely by that review level's rules);
+  `/update-docs --patch` found no STALE or MISSING items (e2e harness docs stay at their
+  established location — `planning/harness.json`'s comment field + `CLAUDE.md` — not duplicated
+  into `docs/`). Added a new `deferred`/`cross_repo` `carryover[]` entry in `planning/state.json`,
+  `bastion-tmux-locale-sensitive-session-parsing`, documenting the underlying `bastion` binary
+  robustness gap for a future session (in the `bastion` repo) to pick up. Wrote
+  `planning/handoff.md` for the next session (next up: `BU.4.A` polish + v0.1 tag; re-verify the
+  serve-api v1.0.0 pin first).
+- **Why:** Phase 7's e2e coverage work — `BU.7.B` exercises the core session lifecycle round-trip
+  against a real `bastion serve` process (not mocks), catching wire-contract drift the unit/widget
+  test suite can't. Follows directly from `BU.7.A` (e2e support helpers) closing last session.
+- **Refs:** spec at `planning/7.B-session-lifecycle-e2e/`; commits `28f6544`, `4d9daea`, `6e0273b`
+
 ## [2026-07-17]
+
+### BU.7.A closed: E2E support helpers (managed session, frame collector, tmux guard)
+
+- **What:** Closed `BU.7.A` via `/sdlc-task 7.A-e2e-support-helpers`, all 5 tasks passed in place
+  on `main` (commits `f0ddee0`, `6eb1ff7`, `bef9586`, `0d7de15`). Added `test/e2e/e2e_support.dart`
+  — a shared, non-`e2e`-tagged library exporting `tmuxAvailable()` (tmux-on-PATH self-skip guard),
+  `subscribeAndCollect()` (subscribe-and-collect N decoded `BastionFrame`s from a `BastionSocket`),
+  and `withManagedSession()` (create-yield-cleanup around `BastionApi.createSession`/`deleteSession`)
+  — plus its own gating test suite `test/e2e/e2e_support_test.dart` (351 lines). This is shared
+  test seam infrastructure for the upcoming e2e coverage blocks `BU.7.B` (session lifecycle
+  round-trip e2e) and `BU.7.C` (live WS pane frame decode e2e), both of which were blocked on
+  `BU.7.A` and are now unblocked/ready in the dependency graph. Also `BU.8.B` (blocked on `BU.7.A`
+  + `BU.8.A`) has one of its two blockers cleared.
+
+  Ran `/close-out` afterward (no worktree — this ran in place on `main`, so no branch merge step
+  applies): `dart format` clean, `flutter analyze` clean (no issues), `flutter test --exclude-tags
+  e2e` = 269 tests all green, non-gating `flutter test --tags e2e` also passed (1 test, real
+  `bastion serve` subprocess). Emoji gate clean (no `.md` files changed this session). Coverage gap
+  scan: no blocking gaps — both changed files are test-only (the new helper library + its own
+  dedicated test file), no production source touched. `/code-review low`: both changed files are
+  under `test/`, which this review level skips entirely per its own rules — zero findings.
+  `/update-docs --patch`: no STALE or MISSING doc items — the new helper is internal test
+  infrastructure (not user-facing), so it's NO-DOC; `docs/api-reference.md` was already current
+  from the prior session's `dispose()` fix.
+- **Why:** `BU.7.A` is the plan-of-record block for Phase 7 (E2E coverage, D34 seam) — providing
+  the shared test-support seam that `BU.7.B`/`BU.7.C` will build their real e2e assertions on top
+  of, without each duplicating session-management/frame-collection/tmux-guard boilerplate.
+- **Refs:** `planning/7.A-e2e-support-helpers/tasks.md`,
+  `planning/7.A-e2e-support-helpers/sdlc/sdlc-task-state.json`
+
+### BU.ticket.e2e-serve-contract closed: service-level e2e + dispose() hang fix
+
+- **What:** Closed `BU.ticket.e2e-serve-contract` — a service-level e2e test that boots a real,
+  DB-free `bastion serve` subprocess and drives the app's real `BastionApi`/`BastionSocket`
+  against it to catch wire-contract drift between BastionUI's Dart DTOs and `bastion`'s
+  `serve-api.md`. Wired as a **non-gating** harness check (`flutter test --tags e2e`,
+  `gates: false`), excluded from the gate via the `e2e` tag in `dart_test.yaml`; it self-skips
+  when no built binary is found (see the `e2e-needs-built-bastion-binary` carryover). Running it
+  surfaced and fixed a real **production hang bug**: `BastionSocket.dispose()` awaited
+  `_transport.close()`, which never completes for a socket whose WS upgrade failed (fatal-auth
+  401) — hanging teardown, reconnect-with-new-token, and navigation forever. The fix bounds the
+  close with an injectable timeout (`_disposeCloseTimeout`, default 5s); added a unit test
+  (`test/services/reconnect_test.dart`, `hangOnClose` fake) and removed the e2e
+  `_disposeBounded` workaround that had masked it. Close-out: gating suite green (262 tests),
+  `flutter analyze` + `dart format` clean, `/code-review low` no findings, real e2e passes
+  against a built binary. Commits on `main`: 740cf77, d1599b8, f50933c (sdlc-task tasks),
+  ba87374 (dispose fix), b7fad2c (docs).
+- **Why:** Guards the thin-client contract (Standing Rule 6): BastionUI mirrors `bastion`'s
+  serve-api schema and must catch drift before it ships. The e2e paid off immediately by
+  exposing a latent teardown/reconnect hang that unit tests alone had not caught.
+- **Refs:** `planning/ticket-e2e-serve-contract/tasks.md`. Next: `BU.4.A` (polish + v0.1 tag).
 
 ### BU.3.A closed: command palette (inject / spawn)
 
