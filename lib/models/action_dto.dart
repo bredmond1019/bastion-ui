@@ -1,4 +1,7 @@
-/// Quick-action command DTOs mirroring serve-api.md (v0.4) §12.
+/// Quick-action command DTOs mirroring serve-api.md (v0.5) §12.
+///
+/// v0.5's only delta over v0.4 is §13 embedded-engine routes, which are
+/// `X-API-Key`-gated and explicitly out of UI scope — no functional gap here.
 ///
 /// This file is pure Dart — no Flutter or socket imports.
 library;
