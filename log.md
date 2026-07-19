@@ -2,7 +2,7 @@
 type: Log
 title: BastionUI Development Log
 description: Chronological log of work completed for BastionUI.
-timestamp: "2026-07-18T19:13:29Z"
+timestamp: "2026-07-19T00:45:35Z"
 ---
 
 # Log — BastionUI
@@ -12,6 +12,25 @@ timestamp: "2026-07-18T19:13:29Z"
 ---
 
 ## [2026-07-18]
+
+### PR #2 merged + main divergence reconciled
+
+- **What:** Merged PR #2 (`plan-client-contract-fixes` — reconnect resilience: resubscribe +
+  re-seed + fatal 401) into `main` via `gh pr merge 2 --squash --delete-branch` (merged
+  2026-07-19T00:43:44Z, squash commit `8e3c40f`). Local `main` had diverged from `origin/main`
+  (local `main` carried unpushed commits, including `12911d4`, ahead of the same stale base point
+  `389c1df` that the PR's squash-merge landed on top of on `origin/main`). Reconciled with
+  `git merge origin/main --no-edit`, which produced one conflict in `log.md` (both sides had
+  appended entries to the top of today's section) — resolved by keeping both entries
+  (origin/main's `plan-client-contract-fixes` entry followed by local main's pre-existing
+  `BU.8.A` entry), committed as merge commit `bd761d0`. Reverified the gating suite green after
+  the merge (`dart format --output=none --set-exit-if-changed .` clean, `flutter analyze` — no
+  issues, `flutter test --exclude-tags e2e` — 303 tests passed) and pushed
+  (`8e3c40f..bd761d0 main -> main`).
+- **Why:** Close out the `plan-client-contract-fixes` sdlc-flow run (block `BU.0.A-ccf`) by
+  landing its PR on `main`, and repair the stale-`origin/main` divergence uncovered in the
+  process so local and remote `main` agree before further work continues.
+- **Refs:** PR https://github.com/bredmond1019/bastion-ui/pull/2
 
 ### BU.0.A-ccf closed: Reconnect resilience — resubscribe + re-seed + fatal 401
 
