@@ -287,6 +287,108 @@ void main() {
       },
     );
 
+    test(
+      'a status fetch failure does not blank a successful workflows fetch',
+      () async {
+        httpTransport.setResponse(statusCode: 404, body: {'code': 'C002'});
+        httpTransport.setResponse(
+          statusCode: 200,
+          body: [
+            {
+              'spec_slug': '2.A-dashboard-repo-detail',
+              'branch': '2.A-dashboard-repo-detail-flow',
+              'status': 'running',
+              'current_task': 3,
+              'started_at': '2026-07-02T00:00:00Z',
+              'updated_at': '2026-07-02T00:05:00Z',
+            },
+          ],
+        );
+        container = ProviderContainer(
+          overrides: [
+            bastionSocketProvider.overrideWith((ref) => socket),
+            bastionApiProvider.overrideWith((ref) => api),
+          ],
+        );
+
+        container.read(repoWorkflowsProvider('bastion-ui'));
+        await pump();
+
+        final state = container.read(repoWorkflowsProvider('bastion-ui'));
+        expect(state.loading, isFalse);
+        expect(state.status, isNull);
+        expect(state.workflows, hasLength(1));
+        expect(state.workflows.single.status, 'running');
+      },
+    );
+
+    test(
+      'a workflows fetch failure does not blank a successful status fetch',
+      () async {
+        httpTransport.setResponse(statusCode: 200, body: statusJson());
+        httpTransport.setResponse(statusCode: 404, body: {'code': 'C001'});
+        container = ProviderContainer(
+          overrides: [
+            bastionSocketProvider.overrideWith((ref) => socket),
+            bastionApiProvider.overrideWith((ref) => api),
+          ],
+        );
+
+        container.read(repoWorkflowsProvider('bastion-ui'));
+        await pump();
+
+        final state = container.read(repoWorkflowsProvider('bastion-ui'));
+        expect(state.loading, isFalse);
+        expect(state.status?.now, 'wiring dashboard');
+        expect(state.workflows, isEmpty);
+      },
+    );
+
+    test(
+      'both legs failing preserves prior state and clears loading',
+      () async {
+        httpTransport.setResponse(statusCode: 200, body: statusJson());
+        httpTransport.setResponse(
+          statusCode: 200,
+          body: [
+            {
+              'spec_slug': '2.A-dashboard-repo-detail',
+              'branch': '2.A-dashboard-repo-detail-flow',
+              'status': 'running',
+              'current_task': 3,
+              'started_at': '2026-07-02T00:00:00Z',
+              'updated_at': '2026-07-02T00:05:00Z',
+            },
+          ],
+        );
+        container = ProviderContainer(
+          overrides: [
+            bastionSocketProvider.overrideWith((ref) => socket),
+            bastionApiProvider.overrideWith((ref) => api),
+          ],
+        );
+        container.read(repoWorkflowsProvider('bastion-ui'));
+        await pump();
+        final seeded = container.read(repoWorkflowsProvider('bastion-ui'));
+        expect(seeded.loading, isFalse);
+        expect(seeded.status?.now, 'wiring dashboard');
+        expect(seeded.workflows, hasLength(1));
+
+        // Both legs fail on the triggered re-fetch.
+        httpTransport.setResponse(statusCode: 404, body: {'code': 'C002'});
+        httpTransport.setResponse(statusCode: 404, body: {'code': 'C001'});
+
+        transport.addMessage(workflowDoneEventJson('bastion-ui'));
+        await pump();
+
+        final state = container.read(repoWorkflowsProvider('bastion-ui'));
+        expect(state.loading, isFalse);
+        // Prior state preserved.
+        expect(state.status?.now, 'wiring dashboard');
+        expect(state.workflows, hasLength(1));
+      },
+    );
+
     test('a workflow_done event for a different repo is ignored', () async {
       httpTransport.setResponse(statusCode: 200, body: statusJson());
       httpTransport.setResponse(statusCode: 200, body: <dynamic>[]);
