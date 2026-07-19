@@ -26,6 +26,7 @@ import 'package:rxdart/rxdart.dart';
 import '../models/frame.dart';
 import '../services/bastion_api.dart';
 import '../services/bastion_socket.dart';
+import 'connection_provider.dart' show ConnectionStatus;
 import 'sessions_provider.dart' show bastionApiProvider, bastionSocketProvider;
 
 /// WS topic name for a given session's live pane stream (serve-api v0.2).
@@ -81,12 +82,36 @@ class PaneNotifier extends StateNotifier<List<String>> {
         .cast<PaneFrame>()
         .debounceTime(const Duration(milliseconds: 150))
         .listen(_onFrame);
+    // Re-run the REST seed on every reconnect (transition *into* `connected`
+    // after the socket's first connect) — the socket itself replays the WS
+    // `subscribe` frame (see bastion_socket.dart), but the REST buffer this
+    // notifier seeded before the drop can now be stale, so it needs a fresh
+    // `_seed()` too. The first connect must NOT double-seed (the ctor above
+    // already called `_seed()` once), hence the `_everConnected` gate — seeded
+    // from the socket's *current* status at subscribe time, mirroring
+    // sessions_provider.dart's SessionsNotifier.
+    _everConnected = _socket.status == ConnectionStatus.connected;
+    _statusSub = _socket.statusStream.listen((status) {
+      if (status == ConnectionStatus.connected) {
+        if (_everConnected) {
+          _seed();
+        }
+        _everConnected = true;
+      }
+    });
   }
 
   final String sessionName;
   final BastionSocket _socket;
   final BastionApi _api;
   StreamSubscription<PaneFrame>? _sub;
+  StreamSubscription<ConnectionStatus>? _statusSub;
+
+  /// `true` once the socket has completed at least one successful connect —
+  /// guards against re-seeding on the very first connect (already handled by
+  /// the constructor's direct `_seed()` call). Set from the socket's current
+  /// status at construction time (see the constructor body).
+  bool _everConnected = false;
 
   /// The `seq` of the last-applied WS `pane` frame, or `null` if none has
   /// been applied yet (the REST seed has no `seq` of its own).
@@ -124,6 +149,7 @@ class PaneNotifier extends StateNotifier<List<String>> {
   void dispose() {
     _socket.send(ClientFrames.unsubscribe(paneTopic(sessionName)));
     _sub?.cancel();
+    _statusSub?.cancel();
     super.dispose();
   }
 }
