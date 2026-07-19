@@ -2,6 +2,7 @@
 
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io' show WebSocketException;
 
 import 'package:flutter_test/flutter_test.dart';
 
@@ -229,6 +230,61 @@ void main() {
           ConnectionStatus.connecting,
           ConnectionStatus.connected,
         ]),
+      );
+
+      await socket.dispose();
+    });
+  });
+
+  group('fatal 401 /ws upgrade rejection', () {
+    test('a WebSocketException with no numeric status on the handshake sets '
+        'isFatalAuth and schedules no reconnect', () async {
+      final transports = <FakeWsTransport>[];
+      final socket = makeSocket(transports);
+      final statuses = <ConnectionStatus>[];
+      socket.statusStream.listen(statuses.add);
+
+      socket.connect();
+      expect(transports, hasLength(1));
+
+      // Mirrors the real dart:io upgrade-rejection message on a 401 — no
+      // numeric status code appears anywhere in the text.
+      transports[0].failReady(
+        const WebSocketException(
+          'Connection to \'ws://test-host:4317/ws\' was not upgraded to '
+          'websocket',
+        ),
+      );
+      await pump();
+
+      expect(socket.isFatalAuth, isTrue);
+      expect(socket.status, ConnectionStatus.disconnected);
+      // No second connection attempt should have been scheduled.
+      expect(transports, hasLength(1));
+      expect(statuses, isNot(contains(ConnectionStatus.reconnecting)));
+
+      // connect() after fatal auth remains a no-op.
+      socket.connect();
+      await pump();
+      expect(transports, hasLength(1));
+
+      await socket.dispose();
+    });
+
+    test('a genuinely transient handshake failure (non-WebSocketException) '
+        'still schedules a reconnect, not fatal auth', () async {
+      final transports = <FakeWsTransport>[];
+      final socket = makeSocket(transports);
+
+      socket.connect();
+      transports[0].failReady(Exception('connection refused'));
+      await pump();
+
+      expect(socket.isFatalAuth, isFalse);
+      expect(
+        transports,
+        hasLength(2),
+        reason: 'a transient failure should trigger a reconnect attempt',
       );
 
       await socket.dispose();

@@ -14,6 +14,7 @@ library;
 
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io' show WebSocketException;
 
 import 'package:web_socket_channel/io.dart';
 
@@ -291,7 +292,7 @@ class BastionSocket {
       await transport.ready;
     } catch (e) {
       if (_disposed) return;
-      if (_isAuthError(e)) {
+      if (_isFatalHandshakeError(e)) {
         _fatalAuth = true;
         _setStatus(ConnectionStatus.disconnected);
         return;
@@ -380,6 +381,25 @@ class BastionSocket {
     return msg.contains('401') ||
         msg.contains('unauthorized') ||
         msg.contains('forbidden');
+  }
+
+  /// Fatal-auth detection for the **handshake path only** (`transport.ready`
+  /// failures during `_doConnect`).
+  ///
+  /// A dart:io WebSocket upgrade rejected with HTTP 401 throws a
+  /// [WebSocketException] whose message ("Connection ... was not upgraded to
+  /// websocket") carries **no status code at all** — so [_isAuthError]'s
+  /// substring match never fires and a bad bearer token would loop on backoff
+  /// forever. `bastion serve` only refuses the `/ws` upgrade for auth reasons
+  /// (Standing Rule 6 — no other route can reject the handshake this way), so
+  /// any handshake-time [WebSocketException] is treated as fatal auth here.
+  /// Genuinely transient failures (refused connections, DNS/socket errors,
+  /// timeouts) surface as other exception types (e.g. [SocketException],
+  /// [TimeoutException]) and are unaffected — they still schedule a normal
+  /// reconnect.
+  bool _isFatalHandshakeError(Object error) {
+    if (_isAuthError(error)) return true;
+    return error is WebSocketException;
   }
 
   void _scheduleReconnect() {
