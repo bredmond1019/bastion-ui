@@ -13,6 +13,52 @@ timestamp: "2026-07-18T19:13:29Z"
 
 ## [2026-07-18]
 
+### BU.0.A-ccf closed: Reconnect resilience — resubscribe + re-seed + fatal 401
+
+- **What:** Closed out block `BU.0.A-ccf` (`plan-client-contract-fixes`, Phase 0 — ad-hoc client
+  contract fixes, D34 seam). Ran via `/sdlc-flow` on branch `plan-client-contract-fixes-flow`; all
+  5 tasks passed on the first attempt, end-of-run review verdict **PASS**:
+  - task1 — `lib/services/bastion_socket.dart`: `BastionSocket` now tracks active
+    subscribe/unsubscribe topics via the existing `send()` path (a `Set<String>` registry) and
+    replays a `subscribe` frame for every still-active topic on each successful reconnect (never on
+    the first connect), so live WS streams survive a transient tailnet drop without a manual
+    navigate-away/back. New test `test/services/reconnect_resubscribe_test.dart`.
+  - task2 — same file: a handshake-time `WebSocketException` thrown by `transport.ready` (e.g. a
+    401 `/ws` upgrade rejection whose message carries no numeric status code) is now detected as
+    fatal auth via a new handshake-path-only `_isFatalHandshakeError`, stopping reconnect, while the
+    existing substring-based `_isAuthError` on the in-stream `onError` path is unchanged and
+    genuinely transient handshake failures still back off normally.
+  - task3 — `lib/state/sessions_provider.dart`: `SessionsNotifier` subscribes to the socket's
+    `statusStream` and re-runs `_seed()` on a reconnect transition (into `connected` after the
+    first connect, tracked via an `_everConnected` flag seeded from the socket's status at listener
+    attach time), preserving the `_sawWsSnapshot` precedence guard and cancelling the status
+    subscription in `dispose()`.
+  - task4 — `lib/state/pane_provider.dart`: mirrored the same reconnect re-seed pattern in
+    `PaneNotifier`, preserving the `_sawWsFrame`/`_lastSeq` precedence guards.
+  - task5 — validation-only; gating suite reconfirmed green with no code changes.
+  Close-out: gating suite green (`dart format` clean, `flutter analyze` clean, `flutter test
+  --exclude-tags e2e` green), end-of-run review PASS (no findings), doc patch applied to
+  `docs/api-reference.md` and `docs/architecture.md`.
+- **Why:** A 2026-07-18 four-agent client⇄server contract audit found three genuine client-side
+  defects; this block fixes the highest-severity one — live streams going silent after any
+  reconnect — plus the infinite-reconnect-loop-on-bad-token defect, both scoped to
+  `bastion_socket.dart` and the two REST-seeding notifiers. The other two blocks in the same ad-hoc
+  plan (`BU.0.B-ccf` — decouple repo status + workflows fetch, `BU.0.C-ccf` — bump the serve-api pin
+  label v0.4→v0.5) are unaffected (disjoint files, no `depends_on`) and remain open for a future
+  pass.
+- **Next:** `BU.4.A` (polish + v0.1 tag) remains next in the master-plan sequence; `BU.0.B-ccf` and
+  `BU.0.C-ccf` remain open in the `plan-client-contract-fixes` ad-hoc plan.
+
+```
+ec14a2e docs: update docs for plan-client-contract-fixes
+137a20a docs: sync GEMINI.md with CLAUDE.md
+b8dddff feat: implement plan-client-contract-fixes-task4
+0fdec31 feat: implement plan-client-contract-fixes-task3
+16907b1 feat: implement plan-client-contract-fixes-task2
+ebae056 feat: implement plan-client-contract-fixes-task1
+12911d4 docs: log BU.8.A fixture-registry-repo-e2e close-out
+```
+
 ### BU.8.A closed: Fixture-registry repo read-surface e2e
 
 - **What:** Closed out block `BU.8.A` (`8.A-fixture-registry-repo-e2e`, Phase 8 — wire-contract

@@ -27,6 +27,12 @@ class FakeWsTransport implements WsTransport {
 
   void addMessage(String msg) => _controller.add(msg);
 
+  /// Simulate a server-side disconnect (a clean stream close) so the
+  /// [BastionSocket] schedules a reconnect.
+  void drop() {
+    if (!_controller.isClosed) _controller.close();
+  }
+
   @override
   Future<void> get ready => _readyCompleter.future;
 
@@ -92,23 +98,32 @@ Future<void> pump([int rounds = 5]) async {
 }
 
 /// Build a connected [BastionSocket] backed by a [FakeWsTransport].
-Future<(BastionSocket, FakeWsTransport)> makeConnectedSocket() async {
-  final transports = <FakeWsTransport>[];
+///
+/// [transports] (optional) collects every transport the socket creates —
+/// including replacement transports created on a drop+reconnect — so
+/// reconnect-focused tests can reach the *next* fake transport after
+/// [FakeWsTransport.drop].
+Future<(BastionSocket, FakeWsTransport)> makeConnectedSocket({
+  List<FakeWsTransport>? transports,
+  Duration Function(int attempt)? backoffSchedule,
+}) async {
+  final ts = transports ?? <FakeWsTransport>[];
   final socket = BastionSocket(
     host: 'test-host',
     port: 4317,
     token: 'test-token',
+    backoffSchedule: backoffSchedule,
     transportFactory: (uri, {headers}) {
       final t = FakeWsTransport();
-      transports.add(t);
+      ts.add(t);
       return t;
     },
   );
   socket.connect();
   await pump();
-  transports.single.completeReady();
+  ts.single.completeReady();
   await pump();
-  return (socket, transports.single);
+  return (socket, ts.single);
 }
 
 // ---------------------------------------------------------------------------
@@ -312,6 +327,131 @@ void main() {
       // container (the shared `container` field was never assigned above).
       container = ProviderContainer();
     });
+
+    test(
+      'a reconnect re-runs the REST seed (second getSessions() call)',
+      () async {
+        // This test needs its own socket (zero backoff, and access to every
+        // transport it creates) rather than the shared `setUp` socket, so it
+        // builds and disposes both inline.
+        final reconnectTransports = <FakeWsTransport>[];
+        final (reconnectSocket, firstTransport) = await makeConnectedSocket(
+          transports: reconnectTransports,
+          backoffSchedule: (_) => Duration.zero,
+        );
+
+        httpTransport.setResponse(
+          statusCode: 200,
+          body: [
+            {'name': 'first-seed', 'state': 'running'},
+          ],
+        );
+        final localContainer = ProviderContainer(
+          overrides: [
+            bastionSocketProvider.overrideWith((ref) => reconnectSocket),
+            bastionApiProvider.overrideWith((ref) => api),
+          ],
+        );
+        localContainer.read(sessionsProvider);
+        await pump();
+        expect(httpTransport.getCallCount, 1);
+
+        // Drop → the socket reconnects (zero backoff) → the notifier's
+        // status-stream listener sees the transition into `connected` again
+        // and re-runs `_seed()`.
+        httpTransport.setResponse(
+          statusCode: 200,
+          body: [
+            {'name': 'reseeded', 'state': 'idle'},
+          ],
+        );
+        firstTransport.drop();
+        await pump();
+        expect(
+          reconnectTransports,
+          hasLength(2),
+          reason: 'a replacement transport should exist after the drop',
+        );
+        reconnectTransports[1].completeReady();
+        await pump();
+
+        expect(httpTransport.getCallCount, 2);
+        expect(localContainer.read(sessionsProvider).single.name, 'reseeded');
+
+        localContainer.dispose();
+        await reconnectSocket.dispose();
+      },
+    );
+
+    test(
+      're-seed after a reconnect does not clobber a newer WS snapshot',
+      () async {
+        final reconnectTransports = <FakeWsTransport>[];
+        final (reconnectSocket, firstTransport) = await makeConnectedSocket(
+          transports: reconnectTransports,
+          backoffSchedule: (_) => Duration.zero,
+        );
+
+        // Drop → reconnect: the slow REST re-seed is queued but not yet
+        // resolved.
+        final seedCompleter = Completer<({int statusCode, String body})>();
+        final slowHttp = _SlowHttpTransport(seedCompleter.future);
+        final slowApi = BastionApi(
+          host: 'test-host',
+          port: 4317,
+          token: 'test-token',
+          transport: slowHttp,
+        );
+        final slowContainer = ProviderContainer(
+          overrides: [
+            bastionSocketProvider.overrideWith((ref) => reconnectSocket),
+            bastionApiProvider.overrideWith((ref) => slowApi),
+          ],
+        );
+        slowContainer.read(sessionsProvider);
+        await pump();
+
+        firstTransport.drop();
+        await pump();
+        expect(reconnectTransports, hasLength(2));
+        reconnectTransports[1].completeReady();
+        await pump();
+
+        // A newer WS snapshot arrives before the slow re-seed resolves.
+        reconnectTransports[1].addMessage(
+          jsonEncode({
+            'kind': 'sessions',
+            'payload': {
+              'sessions': [
+                {'name': 'live-after-reconnect', 'state': 'running'},
+              ],
+            },
+          }),
+        );
+        await pump();
+        expect(
+          slowContainer.read(sessionsProvider).single.name,
+          'live-after-reconnect',
+        );
+
+        // The slow re-seed (triggered by the reconnect) now resolves with a
+        // stale snapshot — it must not overwrite the newer WS state.
+        seedCompleter.complete((
+          statusCode: 200,
+          body: jsonEncode([
+            {'name': 'stale-reseed', 'state': 'idle'},
+          ]),
+        ));
+        await pump();
+        expect(
+          slowContainer.read(sessionsProvider).single.name,
+          'live-after-reconnect',
+        );
+
+        slowContainer.dispose();
+        await reconnectSocket.dispose();
+      },
+    );
   });
 }
 
