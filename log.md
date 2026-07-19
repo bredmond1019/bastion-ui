@@ -2,7 +2,7 @@
 type: Log
 title: BastionUI Development Log
 description: Chronological log of work completed for BastionUI.
-timestamp: "2026-07-19T00:45:35Z"
+timestamp: "2026-07-19T23:33:20Z"
 ---
 
 # Log — BastionUI
@@ -10,6 +10,32 @@ timestamp: "2026-07-19T00:45:35Z"
 *Append-only working log. One dated entry per session. Newest entries at the top.*
 
 ---
+
+## [2026-07-19]
+
+### BU.8.B closed: workflow_done event push + spawn-mode command round-trip e2e
+
+- **What:** Ran `/close-out` for block `BU.8.B` (workflow_done event push + spawn-mode command
+  round-trip e2e). All 5 `sdlc-task` tasks passed on the first attempt, driven on branch `main`
+  in-place (no worktree): commits `060e8c6`, `eb770e0`, `2e6b5cf`, `6016f99` built out
+  `test/e2e/workflow_events_e2e_test.dart` plus supporting changes in
+  `test/e2e/bastion_serve_harness.dart`, `test/e2e/e2e_support.dart`, and
+  `test/e2e/e2e_support_test.dart` (589 lines added across 4 files, all under `test/e2e/` — no
+  `lib/` source changed). Close-out validation: `dart format` clean, `flutter analyze` clean,
+  `flutter test --exclude-tags e2e` green (313 tests), emoji gate OK. No coverage gaps (the diff
+  was entirely test infra). `/code-review low` returned no findings — all changed hunks were test
+  files, out of scope for review at that level. `/update-docs --patch` found no STALE/MISSING —
+  the e2e harness is already documented via `planning/harness.json`'s `_comment`, consistent with
+  prior e2e blocks (BU.7.A–BU.8.A) which also got no per-file doc entries. Removed the now-resolved
+  `planning/state.json` carryover entry `ba0a-workflow-done-push-now-live` (its `clears_when`
+  condition, "BU.8.B part (1) e2e lands", was met this session). With BU.8.B closed, all Phase
+  0–3/7/8 blocks and the ad-hoc `plan-client-contract-fixes` blocks (`BU.0.A-ccf`, `BU.0.B-ccf`,
+  `BU.0.C-ccf`) are now Done/closed. Critical path returns to `BU.4.A` (polish + v0.1 tag, pins
+  serve-api v1.0.0 / bastion Block K), which is next and not yet started. `planning/handoff.md`
+  was rewritten to reflect this.
+- **Why:** Closing out the BU.8.B e2e block — the last item in the ad-hoc Phase 7/8 e2e-coverage
+  plan — so the project can cleanly return to the phase-ordered master-plan sequence at `BU.4.A`.
+- **Refs:** commits `060e8c6`, `eb770e0`, `2e6b5cf`, `6016f99`; block `BU.8.B`
 
 ## [2026-07-18]
 
