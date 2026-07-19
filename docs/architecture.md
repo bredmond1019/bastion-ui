@@ -100,6 +100,16 @@ latest value instead of thrashing a rebuild per frame (`BU.ticket.ws-debounce`).
 `needsInputEventsProvider` (`events_provider.dart`) is a discrete one-shot prompt stream and
 is deliberately left undebounced so no `needs_input` event is ever dropped or delayed.
 
+`sessionsProvider` and `paneProvider` also re-run their one-shot REST seed on every
+`BastionSocket.statusStream` transition into `connected` *after* the first (i.e. every
+reconnect, not the initial connect) — a transient tailnet drop can otherwise leave a
+notifier's `subscribe` un-replayed and its state stale until the next natural update.
+Each notifier seeds its own `_everConnected` flag from `socket.status` at construction
+time (the socket may already be connected by the time the notifier is built, so the
+notifier's own listener would never otherwise observe the true first `connected` event).
+The existing `_sawWsSnapshot`/`_sawWsFrame` precedence guards are unchanged, so a slow
+re-seed can never clobber newer WS-delivered state.
+
 ### Routing
 
 `BastionApp.onGenerateRoute` handles two dynamic route prefixes:
