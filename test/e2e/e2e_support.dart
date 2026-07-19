@@ -206,11 +206,19 @@ Future<List<EventFrame>> collectEvents(
 /// `<planningDir>/<specSlug>/sdlc/sdlc-flow-state.json`, creating parent
 /// directories recursively.
 ///
-/// Matches the shape `bastion` parses in `src/serve/status/flow.rs` (and
-/// the BU.8.A `kFixtureFlowStateJson` fixture): a JSON object carrying
-/// `spec_slug`, `status`, and — when [pr] is given — `pr`. Encodes via
-/// `dart:convert`'s [jsonEncode] rather than string interpolation, so the
-/// written file is always valid JSON regardless of the field values passed.
+/// Matches the shape `bastion` parses in `src/serve/status/flow.rs`'s
+/// `FlowState` (and the BU.8.A `kFixtureFlowStateJson` fixture): a JSON
+/// object carrying `spec_slug`, `status`, and — when [pr] is given — `pr`,
+/// PLUS the other fields `FlowState` requires to deserialize at all
+/// (`branch`, `current_task`, `started_at`, `updated_at` — all
+/// non-`Option` in the Rust struct, so a file missing any of them fails
+/// `serde_json::from_str` and is silently skipped by `collect_flow_states`,
+/// never establishing a baseline or emitting a transition event). Those
+/// four are given fixed, non-load-bearing placeholder values since only
+/// `spec_slug`/`status` (and `pr`) matter to the [FlowWatcher] transition
+/// logic. Encodes via `dart:convert`'s [jsonEncode] rather than string
+/// interpolation, so the written file is always valid JSON regardless of
+/// the field values passed.
 Future<void> writeFixtureFlowState(
   String planningDir, {
   required String specSlug,
@@ -219,7 +227,14 @@ Future<void> writeFixtureFlowState(
 }) async {
   final dir = Directory('$planningDir/$specSlug/sdlc');
   await dir.create(recursive: true);
-  final payload = <String, dynamic>{'spec_slug': specSlug, 'status': status};
+  final payload = <String, dynamic>{
+    'spec_slug': specSlug,
+    'branch': '$specSlug-flow',
+    'status': status,
+    'current_task': 1,
+    'started_at': '2026-07-19T00:00:00Z',
+    'updated_at': '2026-07-19T00:00:00Z',
+  };
   if (pr != null) payload['pr'] = pr;
   final file = File('${dir.path}/sdlc-flow-state.json');
   await file.writeAsString(jsonEncode(payload));
