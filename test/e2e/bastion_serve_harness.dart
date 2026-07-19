@@ -29,7 +29,11 @@
 ///     unaffected (Phase 7 tests, which call `start()` with no fixture,
 ///     stay byte-for-byte unchanged). [fixtureRepos] exposes the
 ///     provisioned repo names to callers; the temp dir is removed
-///     (best-effort) in [stop].
+///     (best-effort) in [stop]. [fixtureWorkspaceRoot] exposes the
+///     provisioned temp dir itself (`null` when no fixture was requested),
+///     and [fixtureRepoPlanningDir] resolves a fixture repo's `planning/`
+///     path within it — both let callers (e.g. the BU.8.B workflow_done
+///     transition test) write additional flow-state fixtures at runtime.
 library;
 
 import 'dart:async';
@@ -135,6 +139,32 @@ final class BastionServeHarness {
   /// callers avoid hardcoding the fixture repo names.
   List<String> get fixtureRepos =>
       _fixtureDir == null ? const [] : kFixtureRepoNames;
+
+  /// The provisioned fixture-workspace temp dir, if [start] was called with
+  /// `workspaceFixture: true`; `null` otherwise. Read-only access to what
+  /// [_fixtureDir] already tracks internally — lets callers write extra
+  /// fixture content (e.g. additional `sdlc-flow-state.json` files) into
+  /// the same temp root the spawned server reads from.
+  Directory? get fixtureWorkspaceRoot => _fixtureDir;
+
+  /// Resolves the `planning/` directory for fixture repo [repo] within the
+  /// provisioned fixture-workspace root (the BU.8.A layout:
+  /// `<root>/repos/<repo>/planning`).
+  ///
+  /// Throws a [StateError] if [start] was not called with
+  /// `workspaceFixture: true` (i.e. [fixtureWorkspaceRoot] is `null`) —
+  /// misuse should fail loudly rather than silently resolve a bogus path.
+  String fixtureRepoPlanningDir(String repo) {
+    final root = _fixtureDir;
+    if (root == null) {
+      throw StateError(
+        'fixtureRepoPlanningDir() called but the harness was not started '
+        'with workspaceFixture: true — there is no fixture workspace root '
+        'to resolve against.',
+      );
+    }
+    return '${root.path}/repos/$repo/planning';
+  }
 
   /// Locate the `bastion` binary using the documented precedence:
   /// env `BASTION_BIN`, then `../bastion/target/release/bastion`, then
