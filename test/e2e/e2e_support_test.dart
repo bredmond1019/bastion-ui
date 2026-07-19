@@ -5,12 +5,13 @@
 /// Not tagged `e2e` — runs in `flutter test --exclude-tags e2e` with no real
 /// `bastion serve` or `tmux` binary. Uses a fake [WsTransport] (mirroring
 /// `test/services/reconnect_test.dart`'s `FakeWsTransport`) and a fake
-/// [HttpTransport] to exercise [subscribeAndCollect] and
-/// [withManagedSession] hermetically.
+/// [HttpTransport] to exercise [subscribeAndCollect], [withManagedSession],
+/// [collectEvents], and [writeFixtureFlowState] hermetically.
 library;
 
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 
@@ -346,6 +347,232 @@ void main() {
       );
 
       expect(result, 'ok:my-session');
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // collectEvents
+  // -------------------------------------------------------------------------
+  group('collectEvents', () {
+    test('does not send a subscribe frame', () async {
+      final transports = <FakeWsTransport>[];
+      final socket = makeSocket(transports);
+      socket.connect();
+      transports[0].completeReady();
+      await pump();
+
+      final future = collectEvents(
+        socket,
+        event: 'workflow_done',
+        count: 1,
+        timeout: const Duration(seconds: 5),
+      );
+      await pump();
+
+      expect(
+        transports[0].sent,
+        isEmpty,
+        reason: 'event frames are broadcast with no subscribe topic',
+      );
+
+      transports[0].addMessage(
+        jsonEncode({
+          'kind': 'event',
+          'payload': {
+            'session': '',
+            'event': 'workflow_done',
+            'repo': 'fixture-repo',
+            'spec_slug': '8B-workflow-done',
+            'status': 'done',
+          },
+        }),
+      );
+
+      final result = await future;
+      expect(result, hasLength(1));
+      expect(result.single.event, 'workflow_done');
+      expect(result.single.extra['repo'], 'fixture-repo');
+      expect(result.single.extra['spec_slug'], '8B-workflow-done');
+      expect(result.single.extra['status'], 'done');
+
+      await socket.dispose();
+    });
+
+    test('ignores event frames with a different event name', () async {
+      final transports = <FakeWsTransport>[];
+      final socket = makeSocket(transports);
+      socket.connect();
+      transports[0].completeReady();
+      await pump();
+
+      final future = collectEvents(
+        socket,
+        event: 'workflow_done',
+        count: 1,
+        timeout: const Duration(milliseconds: 50),
+      );
+
+      transports[0].addMessage(
+        jsonEncode({
+          'kind': 'event',
+          'payload': {'session': '', 'event': 'something_else'},
+        }),
+      );
+
+      await expectLater(future, throwsA(isA<TimeoutException>()));
+
+      await socket.dispose();
+    });
+
+    test(
+      'ignores non-event frames and collects the Nth matching event',
+      () async {
+        final transports = <FakeWsTransport>[];
+        final socket = makeSocket(transports);
+        socket.connect();
+        transports[0].completeReady();
+        await pump();
+
+        final future = collectEvents(
+          socket,
+          event: 'workflow_done',
+          count: 2,
+          timeout: const Duration(seconds: 5),
+        );
+        await pump();
+
+        transports[0].addMessage(
+          jsonEncode({
+            'kind': 'sessions',
+            'payload': {'sessions': []},
+          }),
+        );
+        transports[0].addMessage(
+          jsonEncode({
+            'kind': 'event',
+            'payload': {
+              'session': '',
+              'event': 'workflow_done',
+              'repo': 'a',
+              'spec_slug': 's1',
+              'status': 'done',
+            },
+          }),
+        );
+        transports[0].addMessage(
+          jsonEncode({
+            'kind': 'event',
+            'payload': {
+              'session': '',
+              'event': 'workflow_done',
+              'repo': 'b',
+              'spec_slug': 's2',
+              'status': 'error',
+            },
+          }),
+        );
+        await pump();
+
+        final result = await future;
+        expect(result, hasLength(2));
+        expect(result[0].extra['repo'], 'a');
+        expect(result[1].extra['repo'], 'b');
+
+        await socket.dispose();
+      },
+    );
+  });
+
+  // -------------------------------------------------------------------------
+  // writeFixtureFlowState
+  // -------------------------------------------------------------------------
+  group('writeFixtureFlowState', () {
+    late Directory tempDir;
+
+    setUp(() async {
+      tempDir = await Directory.systemTemp.createTemp('e2e_support_test_');
+    });
+
+    tearDown(() async {
+      try {
+        await tempDir.delete(recursive: true);
+      } catch (_) {
+        // Best-effort cleanup.
+      }
+    });
+
+    test(
+      'writes a valid JSON file at planningDir/specSlug/sdlc/sdlc-flow-state.json',
+      () async {
+        await writeFixtureFlowState(
+          tempDir.path,
+          specSlug: '8B-workflow-done',
+          status: 'running',
+        );
+
+        final file = File(
+          '${tempDir.path}/8B-workflow-done/sdlc/sdlc-flow-state.json',
+        );
+        expect(file.existsSync(), isTrue);
+
+        final decoded =
+            jsonDecode(await file.readAsString()) as Map<String, dynamic>;
+        expect(decoded['spec_slug'], '8B-workflow-done');
+        expect(decoded['status'], 'running');
+        expect(decoded.containsKey('pr'), isFalse);
+      },
+    );
+
+    test('includes pr field when provided', () async {
+      await writeFixtureFlowState(
+        tempDir.path,
+        specSlug: '8B-workflow-done',
+        status: 'done',
+        pr: 'https://example/pr/1',
+      );
+
+      final file = File(
+        '${tempDir.path}/8B-workflow-done/sdlc/sdlc-flow-state.json',
+      );
+      final decoded =
+          jsonDecode(await file.readAsString()) as Map<String, dynamic>;
+      expect(decoded['pr'], 'https://example/pr/1');
+    });
+
+    test('creates parent directories recursively', () async {
+      final nestedPlanningDir = '${tempDir.path}/repos/fixture-repo/planning';
+      await writeFixtureFlowState(
+        nestedPlanningDir,
+        specSlug: 'nested-spec',
+        status: 'done',
+      );
+
+      final file = File(
+        '$nestedPlanningDir/nested-spec/sdlc/sdlc-flow-state.json',
+      );
+      expect(file.existsSync(), isTrue);
+    });
+
+    test('overwriting with a second call replaces content correctly', () async {
+      await writeFixtureFlowState(
+        tempDir.path,
+        specSlug: '8B-workflow-done',
+        status: 'running',
+      );
+      await writeFixtureFlowState(
+        tempDir.path,
+        specSlug: '8B-workflow-done',
+        status: 'done',
+        pr: 'https://example/pr/2',
+      );
+
+      final file = File(
+        '${tempDir.path}/8B-workflow-done/sdlc/sdlc-flow-state.json',
+      );
+      final decoded =
+          jsonDecode(await file.readAsString()) as Map<String, dynamic>;
+      expect(decoded['status'], 'done');
+      expect(decoded['pr'], 'https://example/pr/2');
     });
   });
 }

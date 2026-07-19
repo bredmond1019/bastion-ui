@@ -10,9 +10,17 @@
 ///     `BastionFrame`s from a `BastionSocket`.
 ///   - [withManagedSession] — create-yield-cleanup around
 ///     `BastionApi.createSession`/`deleteSession`.
+///   - [collectEvents] — collect N decoded `EventFrame`s matching a given
+///     `event` name from a `BastionSocket`'s shared broadcast frame stream
+///     (no `subscribe` frame needed — `workflow_done` and other `event`
+///     frames are broadcast to all connected clients with no topic gate).
+///   - [writeFixtureFlowState] — write a minimal valid
+///     `sdlc-flow-state.json` fixture file under a fixture repo's
+///     `planning/<specSlug>/sdlc/` directory (BU.8.B).
 library;
 
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:bastion_ui/models/frame.dart';
@@ -131,4 +139,88 @@ Future<T> withManagedSession<T>(
       // result or the original error from `body`.
     }
   }
+}
+
+/// Listens on [socket]'s shared broadcast [BastionSocket.frames] stream and
+/// resolves with the next [count] decoded [EventFrame]s whose `event` field
+/// equals [event].
+///
+/// `event` frames (e.g. `workflow_done`) are broadcast to ALL connected
+/// clients with no subscribe-topic gate — [subscribeAndCollect]'s
+/// `_matchesTopic` only matches `sessions`/`pane` frames and always returns
+/// `false` for `event` frames, so this collector does not send a
+/// `subscribe` frame at all; simply being connected is enough to observe
+/// the broadcast.
+///
+/// Registers the listener synchronously before returning the future (mirror
+/// [subscribeAndCollect]'s subscribe-before-listen race-avoidance
+/// discipline) — callers must call this **before** triggering whatever
+/// server-side transition is expected to emit the event, so no frame is
+/// lost to a race.
+///
+/// Throws a [TimeoutException] (tearing down the subscription first) if
+/// fewer than [count] matching frames arrive within [timeout].
+Future<List<EventFrame>> collectEvents(
+  BastionSocket socket, {
+  required String event,
+  int count = 1,
+  Duration timeout = const Duration(seconds: 30),
+}) {
+  final collected = <EventFrame>[];
+  final completer = Completer<List<EventFrame>>();
+  late final StreamSubscription<BastionFrame> sub;
+  Timer? timer;
+
+  Future<void> teardown() async {
+    timer?.cancel();
+    await sub.cancel();
+  }
+
+  sub = socket.frames.listen((frame) {
+    if (completer.isCompleted) return;
+    if (frame is! EventFrame) return;
+    if (frame.event != event) return;
+    collected.add(frame);
+    if (collected.length >= count) {
+      unawaited(teardown());
+      completer.complete(List.unmodifiable(collected));
+    }
+  });
+
+  timer = Timer(timeout, () {
+    if (completer.isCompleted) return;
+    unawaited(teardown());
+    completer.completeError(
+      TimeoutException(
+        'collectEvents: only ${collected.length}/$count "$event" frames '
+        'arrived within $timeout',
+        timeout,
+      ),
+    );
+  });
+
+  return completer.future;
+}
+
+/// Writes a minimal valid `sdlc-flow-state.json` fixture file to
+/// `<planningDir>/<specSlug>/sdlc/sdlc-flow-state.json`, creating parent
+/// directories recursively.
+///
+/// Matches the shape `bastion` parses in `src/serve/status/flow.rs` (and
+/// the BU.8.A `kFixtureFlowStateJson` fixture): a JSON object carrying
+/// `spec_slug`, `status`, and — when [pr] is given — `pr`. Encodes via
+/// `dart:convert`'s [jsonEncode] rather than string interpolation, so the
+/// written file is always valid JSON regardless of the field values passed.
+Future<void> writeFixtureFlowState(
+  String planningDir, {
+  required String specSlug,
+  required String status,
+  String? pr,
+}) async {
+  final dir = Directory('$planningDir/$specSlug/sdlc');
+  await dir.create(recursive: true);
+  final payload = <String, dynamic>{'spec_slug': specSlug, 'status': status};
+  if (pr != null) payload['pr'] = pr;
+  final file = File('${dir.path}/sdlc-flow-state.json');
+  await file.writeAsString(jsonEncode(payload));
 }
