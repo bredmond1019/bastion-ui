@@ -2,7 +2,7 @@
 type: Log
 title: BastionUI Development Log
 description: Chronological log of work completed for BastionUI.
-timestamp: "2026-07-19T23:33:20Z"
+timestamp: "2026-07-20T00:58:22Z"
 ---
 
 # Log — BastionUI
@@ -12,6 +12,29 @@ timestamp: "2026-07-19T23:33:20Z"
 ---
 
 ## [2026-07-19]
+
+### E2E coverage round 2 (BU.9.A–E) + upstream §12.3 fix
+
+- **What:** Added four real-server e2e tests closing coverage gaps a self-audit found in
+  already-shipped behaviours (previously only fake/unit-tested), plus supporting harness infra in
+  `test/e2e/`. New files: `sessions_live_frame_e2e_test.dart` (BU.9.B — sessions provider live-frame),
+  `command_inject_e2e_test.dart` (BU.9.C — inject-into-live-session success),
+  `reconnect_e2e_test.dart` (BU.9.D — reconnect resilience), `error_frame_e2e_test.dart` (BU.9.E —
+  error/`WS_ERR` frame decode); infra (BU.9.A) added `restart()` + `collectFrames()`/`awaitStatus()`
+  helpers to `bastion_serve_harness.dart` + `e2e_support.dart`. Running the suite against a live
+  `bastion serve` caught a real **upstream** bug: bastion's `is_unknown_session()` didn't match tmux
+  3.6b's "can't find pane" string, so inject-into-unknown-session returned **500 instead of the
+  documented serve-api §12.3 404/C002**. Fixed in the `bastion` repo
+  (`src/serve/handlers/sessions.rs` + unit test, commit `a562043`) and made the BU.8.B inject test
+  deterministic (guard session). Gates: bastion-ui green (313 tests), full e2e suite **11/11** against
+  the real server, bastion **1346 tests** green. `needs_input` remains the one deliberate deferred gap
+  (needs a real blocked Claude TUI).
+- **Why:** The app is heavily agent-built, so real-server e2e is the safety net against the fake-test
+  drift that agent authorship invites. A coverage audit found four already-shipped behaviours only
+  fake-tested; closing them with live-server tests is what surfaced the upstream §12.3 mapping bug —
+  proof the safety net earns its keep.
+- **Refs:** bastion-ui `c56ae48`; bastion `a562043`. Implemented directly (no `planning/<concept>/`
+  plan dir or `state.json` blocks — per user direction).
 
 ### BU.8.B closed: workflow_done event push + spawn-mode command round-trip e2e
 
