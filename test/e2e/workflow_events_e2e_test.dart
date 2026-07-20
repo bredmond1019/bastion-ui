@@ -198,22 +198,38 @@ void main() {
         return;
       }
 
+      if (!tmuxAvailable()) {
+        markTestSkipped(
+          'tmux not on PATH — skipping tightened inject assertion e2e (the '
+          '404/C002 unknown-session path needs a running tmux server)',
+        );
+        return;
+      }
+
       final api = BastionApi(host: h.host, port: h.port, token: h.token);
       try {
-        try {
-          await api.postCommand(
-            const CommandRequest(
-              mode: CommandMode.inject,
-              session: '8b-inject-nonexistent-session',
-              command: '/status',
-            ),
-          );
-          fail('expected postCommand to throw ApiError');
-        } on ApiError catch (e) {
-          expect(e.statusCode, 404);
-          final body = jsonDecode(e.body) as Map<String, dynamic>;
-          expect(body['code'], 'C002');
-        }
+        // Create a real session first so a tmux server is definitely running.
+        // Injecting into a DIFFERENT, non-existent session then exercises the
+        // documented "session not found" path (§12.3 → 404/C002); without a
+        // running server, tmux reports "no server running", a distinct stderr
+        // the server maps to 500/C010 — so this guard session is what makes
+        // the 404/C002 assertion deterministic.
+        await withManagedSession(api, (_) async {
+          try {
+            await api.postCommand(
+              const CommandRequest(
+                mode: CommandMode.inject,
+                session: '8b-inject-nonexistent-session',
+                command: '/status',
+              ),
+            );
+            fail('expected postCommand to throw ApiError');
+          } on ApiError catch (e) {
+            expect(e.statusCode, 404);
+            final body = jsonDecode(e.body) as Map<String, dynamic>;
+            expect(body['code'], 'C002');
+          }
+        }, name: 'bu8b-inject-guard-session');
       } finally {
         api.dispose();
       }

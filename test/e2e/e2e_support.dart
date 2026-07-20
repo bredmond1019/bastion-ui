@@ -17,6 +17,11 @@
 ///   - [writeFixtureFlowState] — write a minimal valid
 ///     `sdlc-flow-state.json` fixture file under a fixture repo's
 ///     `planning/<specSlug>/sdlc/` directory (BU.8.B).
+///   - [collectFrames] — collect N decoded frames matching an arbitrary
+///     predicate (no `subscribe` sent), for frames with no subscribe-topic
+///     (e.g. `error`) or already-active subscriptions (BU.9.D/E).
+///   - [awaitStatus] — await a `BastionSocket` reaching a given
+///     `ConnectionStatus` (BU.9.B/D).
 library;
 
 import 'dart:async';
@@ -26,6 +31,8 @@ import 'dart:io';
 import 'package:bastion_ui/models/frame.dart';
 import 'package:bastion_ui/services/bastion_api.dart';
 import 'package:bastion_ui/services/bastion_socket.dart';
+import 'package:bastion_ui/state/connection_provider.dart'
+    show ConnectionStatus;
 import 'package:bastion_ui/state/pane_provider.dart' show paneTopic;
 
 /// Returns whether the `tmux` binary is resolvable on PATH.
@@ -238,4 +245,82 @@ Future<void> writeFixtureFlowState(
   if (pr != null) payload['pr'] = pr;
   final file = File('${dir.path}/sdlc-flow-state.json');
   await file.writeAsString(jsonEncode(payload));
+}
+
+/// Listens on [socket]'s shared broadcast [BastionSocket.frames] stream and
+/// resolves with the next [count] decoded [BastionFrame]s for which [match]
+/// returns `true`.
+///
+/// Unlike [subscribeAndCollect], this sends **no** `subscribe` frame — the
+/// caller is responsible for triggering whatever produces the frame (e.g.
+/// sending a bad-topic `subscribe` to elicit an `error` frame, or relying on
+/// an already-active subscription that resumes after a reconnect). Register it
+/// **before** triggering, mirroring the subscribe-before-listen discipline of
+/// [subscribeAndCollect]/[collectEvents], so no frame is lost to a race.
+///
+/// Throws a [TimeoutException] (tearing down the subscription first) if fewer
+/// than [count] matching frames arrive within [timeout].
+Future<List<BastionFrame>> collectFrames(
+  BastionSocket socket, {
+  required bool Function(BastionFrame frame) match,
+  int count = 1,
+  Duration timeout = const Duration(seconds: 30),
+}) {
+  final collected = <BastionFrame>[];
+  final completer = Completer<List<BastionFrame>>();
+  late final StreamSubscription<BastionFrame> sub;
+  Timer? timer;
+
+  Future<void> teardown() async {
+    timer?.cancel();
+    await sub.cancel();
+  }
+
+  sub = socket.frames.listen((frame) {
+    if (completer.isCompleted) return;
+    if (!match(frame)) return;
+    collected.add(frame);
+    if (collected.length >= count) {
+      unawaited(teardown());
+      completer.complete(List.unmodifiable(collected));
+    }
+  });
+
+  timer = Timer(timeout, () {
+    if (completer.isCompleted) return;
+    unawaited(teardown());
+    completer.completeError(
+      TimeoutException(
+        'collectFrames: only ${collected.length}/$count matching frames '
+        'arrived within $timeout',
+        timeout,
+      ),
+    );
+  });
+
+  return completer.future;
+}
+
+/// Completes when [socket]'s [BastionSocket.statusStream] next reaches
+/// [target] — or immediately if [socket.status] already equals [target].
+///
+/// Because the subscription is registered synchronously when this is called,
+/// callers driving an initial connect should create the future **before**
+/// calling `socket.connect()` so the `connected` transition can't be missed:
+/// ```dart
+/// final connected = awaitStatus(socket, ConnectionStatus.connected);
+/// socket.connect();
+/// await connected;
+/// ```
+/// Throws a [TimeoutException] if [target] is not reached within [timeout].
+Future<void> awaitStatus(
+  BastionSocket socket,
+  ConnectionStatus target, {
+  Duration timeout = const Duration(seconds: 30),
+}) {
+  if (socket.status == target) return Future<void>.value();
+  return socket.statusStream
+      .firstWhere((s) => s == target)
+      .timeout(timeout)
+      .then((_) {});
 }
