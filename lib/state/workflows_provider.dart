@@ -156,22 +156,27 @@ class RepoWorkflowsNotifier extends StateNotifier<RepoWorkflowsState> {
   /// `loading` flag) so a transient network blip doesn't blank an
   /// already-rendered screen.
   Future<void> _refresh() async {
-    try {
-      final results = await Future.wait([
-        _api.getRepoStatus(repoName),
-        _api.getRepoWorkflows(repoName),
-      ]);
-      if (!mounted) return;
-      state = state.copyWith(
-        status: results[0] as RepoStatusDto,
-        workflows: results[1] as List<WorkflowStateDto>,
-        loading: false,
-      );
-    } catch (_) {
-      if (mounted) {
-        state = state.copyWith(loading: false);
-      }
-    }
+    // Fetch both legs independently — a 404/C002 on one (e.g. a
+    // registered-but-status-less repo) must not reject the other. Each leg
+    // applies its own value on success and leaves the prior state in place
+    // on failure; `loading` is cleared once both have settled regardless of
+    // outcome.
+    final statusFuture = _api
+        .getRepoStatus(repoName)
+        .then<RepoStatusDto?>((v) => v)
+        .catchError((_) => null);
+    final workflowsFuture = _api
+        .getRepoWorkflows(repoName)
+        .then<List<WorkflowStateDto>?>((v) => v)
+        .catchError((_) => null);
+    final statusResult = await statusFuture;
+    final workflowsResult = await workflowsFuture;
+    if (!mounted) return;
+    state = state.copyWith(
+      status: statusResult,
+      workflows: workflowsResult,
+      loading: false,
+    );
   }
 
   void _onEvent(EventFrame frame) {

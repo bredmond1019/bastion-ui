@@ -29,7 +29,11 @@
 ///     unaffected (Phase 7 tests, which call `start()` with no fixture,
 ///     stay byte-for-byte unchanged). [fixtureRepos] exposes the
 ///     provisioned repo names to callers; the temp dir is removed
-///     (best-effort) in [stop].
+///     (best-effort) in [stop]. [fixtureWorkspaceRoot] exposes the
+///     provisioned temp dir itself (`null` when no fixture was requested),
+///     and [fixtureRepoPlanningDir] resolves a fixture repo's `planning/`
+///     path within it — both let callers (e.g. the BU.8.B workflow_done
+///     transition test) write additional flow-state fixtures at runtime.
 library;
 
 import 'dart:async';
@@ -109,10 +113,14 @@ final class BastionServeHarness {
     required this.host,
     required this.port,
     required this.token,
-    required this.process,
+    required Process process,
+    required String binaryPath,
+    required Map<String, String> environment,
     Directory? fixtureDir,
-    // ignore: prefer_initializing_formals
-  }) : _fixtureDir = fixtureDir;
+  }) : _process = process, // ignore: prefer_initializing_formals
+       _binaryPath = binaryPath, // ignore: prefer_initializing_formals
+       _environment = environment, // ignore: prefer_initializing_formals
+       _fixtureDir = fixtureDir; // ignore: prefer_initializing_formals
 
   /// Host the server is bound to (always `127.0.0.1`).
   final String host;
@@ -123,7 +131,18 @@ final class BastionServeHarness {
   /// Bearer token the server was started with.
   final String token;
 
-  final Process process;
+  /// The running `bastion serve` subprocess. Reassigned by [restart]; read it
+  /// through the [process] getter rather than capturing this field directly.
+  Process _process;
+
+  /// The current `bastion serve` subprocess.
+  Process get process => _process;
+
+  /// The binary path and spawn environment captured at [start] so [restart]
+  /// can respawn a byte-for-byte-identical server on the same port (including
+  /// any fixture `XDG_CONFIG_HOME`).
+  final String _binaryPath;
+  final Map<String, String> _environment;
 
   /// The provisioned fixture-workspace temp dir, if [start] was called with
   /// `workspaceFixture: true`; `null` otherwise. Removed (best-effort) by
@@ -135,6 +154,32 @@ final class BastionServeHarness {
   /// callers avoid hardcoding the fixture repo names.
   List<String> get fixtureRepos =>
       _fixtureDir == null ? const [] : kFixtureRepoNames;
+
+  /// The provisioned fixture-workspace temp dir, if [start] was called with
+  /// `workspaceFixture: true`; `null` otherwise. Read-only access to what
+  /// [_fixtureDir] already tracks internally — lets callers write extra
+  /// fixture content (e.g. additional `sdlc-flow-state.json` files) into
+  /// the same temp root the spawned server reads from.
+  Directory? get fixtureWorkspaceRoot => _fixtureDir;
+
+  /// Resolves the `planning/` directory for fixture repo [repo] within the
+  /// provisioned fixture-workspace root (the BU.8.A layout:
+  /// `<root>/repos/<repo>/planning`).
+  ///
+  /// Throws a [StateError] if [start] was not called with
+  /// `workspaceFixture: true` (i.e. [fixtureWorkspaceRoot] is `null`) —
+  /// misuse should fail loudly rather than silently resolve a bogus path.
+  String fixtureRepoPlanningDir(String repo) {
+    final root = _fixtureDir;
+    if (root == null) {
+      throw StateError(
+        'fixtureRepoPlanningDir() called but the harness was not started '
+        'with workspaceFixture: true — there is no fixture workspace root '
+        'to resolve against.',
+      );
+    }
+    return '${root.path}/repos/$repo/planning';
+  }
 
   /// Locate the `bastion` binary using the documented precedence:
   /// env `BASTION_BIN`, then `../bastion/target/release/bastion`, then
@@ -276,6 +321,8 @@ final class BastionServeHarness {
       port: port,
       token: bastionServeHarnessTestToken,
       process: process,
+      binaryPath: binaryPath,
+      environment: env,
       fixtureDir: fixtureDir,
     );
   }
@@ -295,5 +342,61 @@ final class BastionServeHarness {
     } catch (_) {
       // Best-effort — a delete error must never mask teardown.
     }
+  }
+
+  /// Force a real connection drop by killing the current `bastion serve`
+  /// process and respawning an identical one on the **same** `host:port` with
+  /// the same environment (including any fixture `XDG_CONFIG_HOME`), then
+  /// waiting for `/health`. The server exposes no in-band drop signal, so this
+  /// is how the reconnect e2e (BU.9.D) exercises the client's
+  /// backoff-reconnect + resubscribe-replay path against a real server.
+  ///
+  /// The fixture temp dir (if any) is deliberately NOT re-provisioned — the
+  /// same `XDG_CONFIG_HOME` is reused, so any flow-state or registry content
+  /// written during the test survives the restart.
+  ///
+  /// Retries the respawn up to [maxAttempts] times to absorb the brief window
+  /// where the just-freed port is not yet re-bindable (e.g. lingering
+  /// TIME_WAIT); throws a [StateError] only if every attempt fails to become
+  /// ready within [readyTimeout].
+  Future<void> restart({
+    Duration readyTimeout = const Duration(seconds: 15),
+    int maxAttempts = 5,
+  }) async {
+    _process.kill(ProcessSignal.sigkill);
+    try {
+      await _process.exitCode.timeout(const Duration(seconds: 5));
+    } catch (_) {
+      // Best-effort — the sigkill was already sent.
+    }
+
+    Object? lastError;
+    for (var attempt = 0; attempt < maxAttempts; attempt++) {
+      final process = await Process.start(
+        _binaryPath,
+        ['serve', '--addr', '127.0.0.1:$port', '--token', token],
+        environment: _environment,
+        includeParentEnvironment: false,
+      );
+      try {
+        await _waitForHealth(
+          port: port,
+          process: process,
+          timeout: readyTimeout,
+        );
+        _process = process;
+        return;
+      } catch (e) {
+        lastError = e;
+        process.kill(ProcessSignal.sigkill);
+        // Brief pause before rebinding the same port — handles the transient
+        // window where the OS has not yet released it after the prior process.
+        await Future<void>.delayed(const Duration(milliseconds: 250));
+      }
+    }
+    throw StateError(
+      'bastion serve failed to restart on port $port after $maxAttempts '
+      'attempts (last error: $lastError)',
+    );
   }
 }

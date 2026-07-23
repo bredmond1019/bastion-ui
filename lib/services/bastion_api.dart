@@ -430,7 +430,7 @@ final class BastionApi {
   }
 
   // -------------------------------------------------------------------------
-  // Quick-action command REST (v0.4) — serve-api.md §12
+  // Quick-action command REST (v0.5) — serve-api.md §12
   // -------------------------------------------------------------------------
 
   /// `POST /api/actions/command` — fire a slash-command at Bastion, either

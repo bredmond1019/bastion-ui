@@ -26,6 +26,7 @@ import 'state/connection_provider.dart';
 import 'state/sessions_provider.dart'
     show bastionApiProvider, bastionSocketProvider;
 import 'state/workflows_provider.dart' show workflowDoneEventsProvider;
+import 'theme/app_theme.dart';
 import 'widgets/connection_banner.dart';
 
 Future<void> main() async {
@@ -58,10 +59,9 @@ class BastionApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'BastionUI',
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.blueGrey),
-        useMaterial3: true,
-      ),
+      theme: AppTheme.light,
+      darkTheme: AppTheme.dark,
+      themeMode: ThemeMode.system,
       home: const HomeShell(),
       // Handles `sessionDetailRouteName(name)` pushes from
       // `SessionsListScreen`'s session cards and `repoDetailRouteName(name)`

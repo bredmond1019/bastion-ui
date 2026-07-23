@@ -55,6 +55,9 @@ dev_dependencies:
   # rules and activating additional ones.
   flutter_lints: ^6.0.0
 
+  # App launcher icon generation (BU.4.A task5) — regenerates android/app/src/main/res/mipmap-*
+  flutter_launcher_icons: ^0.14.4
+
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
 
@@ -96,3 +99,14 @@ flutter:
   #
   # For details regarding fonts from package dependencies,
   # see https://flutter.dev/to/font-from-package
+
+  assets:
+    - assets/icon/app_icon.png
+
+# flutter_launcher_icons config (BU.4.A task5) — run `dart run flutter_launcher_icons`
+# to regenerate android/app/src/main/res/mipmap-* from the source asset below.
+flutter_launcher_icons:
+  android: true
+  ios: false
+  image_path: "assets/icon/app_icon.png"
+  min_sdk_android: 21

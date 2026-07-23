@@ -16,18 +16,30 @@ import '../widgets/pane_view.dart';
 
 /// Live pane + quick-approve view for a single session.
 class SessionDetailScreen extends ConsumerWidget {
-  const SessionDetailScreen({super.key, required this.sessionName});
+  const SessionDetailScreen({
+    super.key,
+    required this.sessionName,
+    this.embedded = false,
+  });
 
   /// The session this screen is showing (route argument from
   /// `sessions_list_screen.dart`'s `sessionDetailRouteName`).
   final String sessionName;
+
+  /// True when rendered inline as a [ResponsiveScaffold] detail pane
+  /// (BU.4.A tablet split) rather than pushed as its own route. Suppresses
+  /// the implied back button, since there is no route to pop back from.
+  final bool embedded;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final lines = ref.watch(paneProvider(sessionName));
 
     return Scaffold(
-      appBar: AppBar(title: Text(sessionName)),
+      appBar: AppBar(
+        title: Text(sessionName),
+        automaticallyImplyLeading: !embedded,
+      ),
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [

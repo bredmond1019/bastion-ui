@@ -2,7 +2,7 @@
 type: Log
 title: BastionUI Development Log
 description: Chronological log of work completed for BastionUI.
-timestamp: "2026-07-18T19:13:29Z"
+timestamp: "2026-07-20T00:58:22Z"
 ---
 
 # Log — BastionUI
@@ -11,7 +11,113 @@ timestamp: "2026-07-18T19:13:29Z"
 
 ---
 
+## [2026-07-23]
+
+### BU.4.A closed — polish (theme, responsive layout, reconnect UX, app icon)
+
+- **What:** Ran `sdlc-flow` for `4.A-polish-v0.1` across 7 tasks (all passed first attempt),
+  end-of-run review PASS. Task 1 added `lib/theme/app_theme.dart` (Material 3 light/dark `ThemeData`,
+  blueGrey seed). Task 2 added `lib/widgets/responsive_scaffold.dart` (single-pane below a 720dp
+  breakpoint, list+detail split at/above it). Task 3 gave `ConnectionBanner` distinct per-status copy
+  and a tap affordance to `SettingsScreen` in every connection state. Task 4 wired
+  `SessionsListScreen`/`SessionDetailScreen` through `ResponsiveScaffold` via a new
+  `selectedSessionProvider`, embedding the detail pane on tablet widths while phones keep
+  push-navigation. Task 5 replaced the default Flutter launcher icon with a blueGrey "B" monogram
+  badge generated via `flutter_launcher_icons` across all mipmap densities. Task 6 wired
+  `MaterialApp` in `lib/main.dart` to `AppTheme.light`/`AppTheme.dark` + `ThemeMode.system` and added
+  a regression test guarding against a double-rendered detail pane at tablet width. Task 7 was
+  validation-only (dart format/flutter analyze/flutter test all clean; no code changes needed). The
+  spec was deliberately **scoped down** from the master-plan block: the serve-api v1.0.0 pin and the
+  v0.1 git tag are **deferred**, since upstream `bastion/docs/serve-api.md` is still v0.5 and Block K
+  (BA.11.F) has not shipped — pinning now would fabricate a contract version (Standing Rule 6).
+- **Why:** Polish work (dark theme, tablet-aware layout, clearer reconnect UX, a real app icon) was
+  ready and contract-free, so it shipped now rather than waiting on the unrelated upstream freeze;
+  the pin+tag half is left as an explicit follow-up once `bastion` Block K lands.
+- **Refs:** commits `d47c943`..`4a39821` (tasks 1–6) + `47b69ea` (docs); spec at
+  `planning/4.A-polish-v0.1/`.
+- Next: pick up the deferred serve-api v1.0.0 pin + v0.1 tag once `bastion` Block K (BA.11.F) ships,
+  or start `BU.5.A` (Engine workflow screen) once that unblocks it.
+
+```
+47b69ea docs: update docs for 4.A-polish-v0.1
+4a39821 feat: implement 4.A-polish-v0.1-task6
+ba4c8e1 feat: implement 4.A-polish-v0.1-task5
+e52ea04 feat: implement 4.A-polish-v0.1-task4
+1e1f5a9 feat: implement 4.A-polish-v0.1-task3
+d1cd3f6 feat: implement 4.A-polish-v0.1-task2
+d47c943 feat: implement 4.A-polish-v0.1-task1
+e2340df docs: log e2e coverage round 2 (BU.9.A-E) + upstream §12.3 fix
+```
+
+## [2026-07-19]
+
+### E2E coverage round 2 (BU.9.A–E) + upstream §12.3 fix
+
+- **What:** Added four real-server e2e tests closing coverage gaps a self-audit found in
+  already-shipped behaviours (previously only fake/unit-tested), plus supporting harness infra in
+  `test/e2e/`. New files: `sessions_live_frame_e2e_test.dart` (BU.9.B — sessions provider live-frame),
+  `command_inject_e2e_test.dart` (BU.9.C — inject-into-live-session success),
+  `reconnect_e2e_test.dart` (BU.9.D — reconnect resilience), `error_frame_e2e_test.dart` (BU.9.E —
+  error/`WS_ERR` frame decode); infra (BU.9.A) added `restart()` + `collectFrames()`/`awaitStatus()`
+  helpers to `bastion_serve_harness.dart` + `e2e_support.dart`. Running the suite against a live
+  `bastion serve` caught a real **upstream** bug: bastion's `is_unknown_session()` didn't match tmux
+  3.6b's "can't find pane" string, so inject-into-unknown-session returned **500 instead of the
+  documented serve-api §12.3 404/C002**. Fixed in the `bastion` repo
+  (`src/serve/handlers/sessions.rs` + unit test, commit `a562043`) and made the BU.8.B inject test
+  deterministic (guard session). Gates: bastion-ui green (313 tests), full e2e suite **11/11** against
+  the real server, bastion **1346 tests** green. `needs_input` remains the one deliberate deferred gap
+  (needs a real blocked Claude TUI).
+- **Why:** The app is heavily agent-built, so real-server e2e is the safety net against the fake-test
+  drift that agent authorship invites. A coverage audit found four already-shipped behaviours only
+  fake-tested; closing them with live-server tests is what surfaced the upstream §12.3 mapping bug —
+  proof the safety net earns its keep.
+- **Refs:** bastion-ui `c56ae48`; bastion `a562043`. Implemented directly (no `planning/<concept>/`
+  plan dir or `state.json` blocks — per user direction).
+
+### BU.8.B closed: workflow_done event push + spawn-mode command round-trip e2e
+
+- **What:** Ran `/close-out` for block `BU.8.B` (workflow_done event push + spawn-mode command
+  round-trip e2e). All 5 `sdlc-task` tasks passed on the first attempt, driven on branch `main`
+  in-place (no worktree): commits `060e8c6`, `eb770e0`, `2e6b5cf`, `6016f99` built out
+  `test/e2e/workflow_events_e2e_test.dart` plus supporting changes in
+  `test/e2e/bastion_serve_harness.dart`, `test/e2e/e2e_support.dart`, and
+  `test/e2e/e2e_support_test.dart` (589 lines added across 4 files, all under `test/e2e/` — no
+  `lib/` source changed). Close-out validation: `dart format` clean, `flutter analyze` clean,
+  `flutter test --exclude-tags e2e` green (313 tests), emoji gate OK. No coverage gaps (the diff
+  was entirely test infra). `/code-review low` returned no findings — all changed hunks were test
+  files, out of scope for review at that level. `/update-docs --patch` found no STALE/MISSING —
+  the e2e harness is already documented via `planning/harness.json`'s `_comment`, consistent with
+  prior e2e blocks (BU.7.A–BU.8.A) which also got no per-file doc entries. Removed the now-resolved
+  `planning/state.json` carryover entry `ba0a-workflow-done-push-now-live` (its `clears_when`
+  condition, "BU.8.B part (1) e2e lands", was met this session). With BU.8.B closed, all Phase
+  0–3/7/8 blocks and the ad-hoc `plan-client-contract-fixes` blocks (`BU.0.A-ccf`, `BU.0.B-ccf`,
+  `BU.0.C-ccf`) are now Done/closed. Critical path returns to `BU.4.A` (polish + v0.1 tag, pins
+  serve-api v1.0.0 / bastion Block K), which is next and not yet started. `planning/handoff.md`
+  was rewritten to reflect this.
+- **Why:** Closing out the BU.8.B e2e block — the last item in the ad-hoc Phase 7/8 e2e-coverage
+  plan — so the project can cleanly return to the phase-ordered master-plan sequence at `BU.4.A`.
+- **Refs:** commits `060e8c6`, `eb770e0`, `2e6b5cf`, `6016f99`; block `BU.8.B`
+
 ## [2026-07-18]
+
+### PR #2 merged + main divergence reconciled
+
+- **What:** Merged PR #2 (`plan-client-contract-fixes` — reconnect resilience: resubscribe +
+  re-seed + fatal 401) into `main` via `gh pr merge 2 --squash --delete-branch` (merged
+  2026-07-19T00:43:44Z, squash commit `8e3c40f`). Local `main` had diverged from `origin/main`
+  (local `main` carried unpushed commits, including `12911d4`, ahead of the same stale base point
+  `389c1df` that the PR's squash-merge landed on top of on `origin/main`). Reconciled with
+  `git merge origin/main --no-edit`, which produced one conflict in `log.md` (both sides had
+  appended entries to the top of today's section) — resolved by keeping both entries
+  (origin/main's `plan-client-contract-fixes` entry followed by local main's pre-existing
+  `BU.8.A` entry), committed as merge commit `bd761d0`. Reverified the gating suite green after
+  the merge (`dart format --output=none --set-exit-if-changed .` clean, `flutter analyze` — no
+  issues, `flutter test --exclude-tags e2e` — 303 tests passed) and pushed
+  (`8e3c40f..bd761d0 main -> main`).
+- **Why:** Close out the `plan-client-contract-fixes` sdlc-flow run (block `BU.0.A-ccf`) by
+  landing its PR on `main`, and repair the stale-`origin/main` divergence uncovered in the
+  process so local and remote `main` agree before further work continues.
+- **Refs:** PR https://github.com/bredmond1019/bastion-ui/pull/2
 
 ### BU.0.A-ccf closed: Reconnect resilience — resubscribe + re-seed + fatal 401
 

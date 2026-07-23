@@ -12,6 +12,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:bastion_ui/main.dart';
 import 'package:bastion_ui/state/connection_provider.dart';
+import 'package:bastion_ui/theme/app_theme.dart';
 import 'package:bastion_ui/widgets/connection_banner.dart';
 
 void main() {
@@ -27,6 +28,21 @@ void main() {
     expect(find.byType(Scaffold), findsAtLeastNWidgets(1));
     expect(find.text('BastionUI'), findsOneWidget);
   });
+
+  testWidgets(
+    'BastionApp supplies AppTheme.light/dark and follows system brightness '
+    '(BU.4.A Task 6)',
+    (WidgetTester tester) async {
+      await tester.pumpWidget(const ProviderScope(child: BastionApp()));
+
+      final app = tester.widget<MaterialApp>(find.byType(MaterialApp));
+      expect(app.theme, equals(AppTheme.light));
+      expect(app.darkTheme, equals(AppTheme.dark));
+      expect(app.themeMode, equals(ThemeMode.system));
+      // Dark theme must be a genuine dark scheme, not the light one reused.
+      expect(app.darkTheme!.brightness, equals(Brightness.dark));
+    },
+  );
 
   testWidgets('HomeShell renders ConnectionBanner and settings action', (
     WidgetTester tester,

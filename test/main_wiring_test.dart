@@ -384,6 +384,58 @@ void main() {
     expect(find.byType(QuickActionsScreen), findsOneWidget);
     expect(find.text('Quick Actions'), findsOneWidget); // AppBar title
   });
+
+  testWidgets(
+    'tablet-width composition renders exactly one embedded detail pane, no '
+    'push-navigated duplicate (BU.4.A Task 6)',
+    (tester) async {
+      final socket = BastionSocket(
+        host: 'test-host',
+        port: 4317,
+        token: 'test-token',
+        transportFactory: (uri, {headers}) => _FakeWsTransport(),
+      );
+      addTearDown(socket.dispose);
+      final api = BastionApi(
+        host: 'test-host',
+        port: 4317,
+        token: 'test-token',
+        transport: _FakeHttpTransport(),
+      );
+      addTearDown(api.dispose);
+
+      // Pin the test surface to a tablet width (>= ResponsiveScaffold's
+      // breakpoint) so SessionsListScreen renders its list+detail split.
+      await tester.binding.setSurfaceSize(const Size(1000, 800));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            bastionSocketProvider.overrideWith((ref) => socket),
+            bastionApiProvider.overrideWith((ref) => api),
+          ],
+          child: MaterialApp(
+            home: const _TabsHarness(),
+            onGenerateRoute: _generateRoute,
+          ),
+        ),
+      );
+      await tester.pump();
+
+      // Tapping the session card selects it into the split-view detail pane
+      // (tablet width) rather than pushing a route.
+      await tester.tap(find.text('alpha'));
+      await tester.pumpAndSettle();
+
+      // Exactly one SessionDetailScreen — the embedded split-pane instance
+      // — must exist; if the app also pushed a route on top (the
+      // double-render this test guards against), a second instance would
+      // appear on the Navigator stack.
+      expect(find.byType(SessionDetailScreen), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
 }
 
 /// Minimal notifier seeded to disconnected/unconfigured state — avoids

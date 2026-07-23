@@ -11,13 +11,16 @@ library;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../screens/settings_screen.dart';
 import '../state/connection_provider.dart';
 
 /// A slim coloured banner that reflects the live [ConnectionStatus].
 ///
 /// Reads [connectionProvider] from the nearest [ProviderScope].  No
 /// business logic lives here — the banner is a pure projection of the
-/// provider state.
+/// provider state, plus a tap affordance that opens [SettingsScreen] (every
+/// state is tappable, not only the error ones, so the operator can always
+/// jump to the connection config from wherever the banner is showing).
 class ConnectionBanner extends ConsumerWidget {
   const ConnectionBanner({super.key});
 
@@ -39,58 +42,115 @@ class _BannerStrip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final (label, color, icon) = _appearance(status);
+    final appearance = _appearance(status);
 
-    return ColoredBox(
-      color: color,
-      child: SafeArea(
-        top: false,
-        bottom: false,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-          child: Row(
-            children: [
-              Icon(icon, color: Colors.white, size: 16),
-              const SizedBox(width: 8),
-              Text(
-                label,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 13,
-                  fontWeight: FontWeight.w500,
-                  decoration: TextDecoration.none,
+    return Material(
+      color: appearance.color,
+      child: InkWell(
+        onTap: () {
+          Navigator.of(context).push(
+            MaterialPageRoute<void>(builder: (_) => const SettingsScreen()),
+          );
+        },
+        child: SafeArea(
+          top: false,
+          bottom: false,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+            child: Row(
+              children: [
+                Icon(appearance.icon, color: Colors.white, size: 16),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        appearance.label,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w500,
+                          decoration: TextDecoration.none,
+                        ),
+                      ),
+                      if (appearance.subtitle != null)
+                        Text(
+                          appearance.subtitle!,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 11,
+                            decoration: TextDecoration.none,
+                          ),
+                        ),
+                    ],
+                  ),
                 ),
-              ),
-            ],
+                if (appearance.showAction)
+                  const Icon(
+                    Icons.chevron_right,
+                    color: Colors.white,
+                    size: 18,
+                  ),
+              ],
+            ),
           ),
         ),
       ),
     );
   }
 
-  /// Maps a [ConnectionStatus] to a (label, background colour, icon) triple.
-  static (String, Color, IconData) _appearance(ConnectionStatus status) {
+  /// Maps a [ConnectionStatus] to its full visual + copy appearance.
+  static _BannerAppearance _appearance(ConnectionStatus status) {
     return switch (status) {
-      ConnectionStatus.connected => (
-        'Connected',
-        const Color(0xFF388E3C), // green 700
-        Icons.wifi,
+      ConnectionStatus.connected => const _BannerAppearance(
+        label: 'Connected',
+        subtitle: null,
+        color: Color(0xFF388E3C), // green 700
+        icon: Icons.wifi,
+        showAction: false,
       ),
-      ConnectionStatus.connecting => (
-        'Connecting…',
-        const Color(0xFFF57C00), // orange 700
-        Icons.wifi_find,
+      ConnectionStatus.connecting => const _BannerAppearance(
+        label: 'Connecting…',
+        subtitle: null,
+        color: Color(0xFFF57C00), // orange 700
+        icon: Icons.wifi_find,
+        showAction: false,
       ),
-      ConnectionStatus.reconnecting => (
-        'Reconnecting…',
-        const Color(0xFFE65100), // deep orange 900
-        Icons.wifi_tethering,
+      ConnectionStatus.reconnecting => const _BannerAppearance(
+        label: 'Reconnecting…',
+        subtitle: 'Trying to restore the link to bastion serve',
+        color: Color(0xFFE65100), // deep orange 900
+        icon: Icons.wifi_tethering,
+        showAction: false,
       ),
-      ConnectionStatus.disconnected => (
-        'Disconnected',
-        const Color(0xFFC62828), // red 800
-        Icons.wifi_off,
+      ConnectionStatus.disconnected => const _BannerAppearance(
+        label: 'Disconnected',
+        subtitle: 'Tap to check your server settings',
+        color: Color(0xFFC62828), // red 800
+        icon: Icons.wifi_off,
+        showAction: true,
       ),
     };
   }
+}
+
+/// Full visual appearance for a given [ConnectionStatus]: label, optional
+/// subtitle copy, background colour, leading icon, and whether the
+/// trailing settings affordance icon is shown.
+class _BannerAppearance {
+  const _BannerAppearance({
+    required this.label,
+    required this.subtitle,
+    required this.color,
+    required this.icon,
+    required this.showAction,
+  });
+
+  final String label;
+  final String? subtitle;
+  final Color color;
+  final IconData icon;
+  final bool showAction;
 }
