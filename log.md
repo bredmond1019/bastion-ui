@@ -2,7 +2,7 @@
 type: Log
 title: BastionUI Development Log
 description: Chronological log of work completed for BastionUI.
-timestamp: "2026-07-20T00:58:22Z"
+timestamp: "2026-07-23T23:20:40Z"
 ---
 
 # Log — BastionUI
@@ -12,6 +12,26 @@ timestamp: "2026-07-20T00:58:22Z"
 ---
 
 ## [2026-07-23]
+
+### BU.4.A — PR #3 merged to main
+
+- **What:** PR #3 (`4.A-polish-v0.1-flow` → `main`, theme polish + responsive scaffold +
+  connection banner + app icon) merged via `gh pr merge 3 --merge --delete-branch`; local `main`
+  fast-forwarded to the merge commit `8652e3a`, branch deleted, working tree clean. The `sdlc-flow`
+  run behind the PR executed 7 tasks (all passed first attempt), one consolidated end-of-run review
+  (PASS, no findings), and a docs patch (`docs/architecture.md`, `docs/pages.md`) before opening the
+  PR. Changed files: `lib/theme/app_theme.dart` (new), `lib/widgets/responsive_scaffold.dart` (new),
+  `lib/widgets/connection_banner.dart`, `lib/screens/session_detail_screen.dart`,
+  `lib/screens/sessions_list_screen.dart`, `lib/main.dart`, `assets/icon/app_icon.png` (new app
+  icon), plus tests (`test/app_icon_test.dart`, `test/theme/app_theme_test.dart`,
+  `test/widgets/responsive_test.dart`, `test/widgets/connection_banner_test.dart`,
+  `test/widgets/sessions_list_test.dart`, `test/main_wiring_test.dart`, `test/widget_test.dart`),
+  `pubspec.yaml`/`pubspec.lock`.
+- **Why:** Closes out the `4.A-polish-v0.1` spec — the scoped-down, contract-free half of `BU.4.A`
+  (theme, responsive layout, reconnect UX, app icon) — by landing its branch-train PR on `main`,
+  matching the merge-based workflow used for prior blocks (e.g. PR #2).
+- **Refs:** PR #3 (`4.A-polish-v0.1-flow`); spec at `planning/4.A-polish-v0.1/`; see the same-day
+  entry below for the flow's task-level narrative and the deferred v1.0.0 pin/tag follow-up.
 
 ### BU.4.A closed — polish (theme, responsive layout, reconnect UX, app icon)
 
