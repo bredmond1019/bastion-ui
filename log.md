@@ -11,6 +11,44 @@ timestamp: "2026-07-20T00:58:22Z"
 
 ---
 
+## [2026-07-23]
+
+### BU.4.A closed — polish (theme, responsive layout, reconnect UX, app icon)
+
+- **What:** Ran `sdlc-flow` for `4.A-polish-v0.1` across 7 tasks (all passed first attempt),
+  end-of-run review PASS. Task 1 added `lib/theme/app_theme.dart` (Material 3 light/dark `ThemeData`,
+  blueGrey seed). Task 2 added `lib/widgets/responsive_scaffold.dart` (single-pane below a 720dp
+  breakpoint, list+detail split at/above it). Task 3 gave `ConnectionBanner` distinct per-status copy
+  and a tap affordance to `SettingsScreen` in every connection state. Task 4 wired
+  `SessionsListScreen`/`SessionDetailScreen` through `ResponsiveScaffold` via a new
+  `selectedSessionProvider`, embedding the detail pane on tablet widths while phones keep
+  push-navigation. Task 5 replaced the default Flutter launcher icon with a blueGrey "B" monogram
+  badge generated via `flutter_launcher_icons` across all mipmap densities. Task 6 wired
+  `MaterialApp` in `lib/main.dart` to `AppTheme.light`/`AppTheme.dark` + `ThemeMode.system` and added
+  a regression test guarding against a double-rendered detail pane at tablet width. Task 7 was
+  validation-only (dart format/flutter analyze/flutter test all clean; no code changes needed). The
+  spec was deliberately **scoped down** from the master-plan block: the serve-api v1.0.0 pin and the
+  v0.1 git tag are **deferred**, since upstream `bastion/docs/serve-api.md` is still v0.5 and Block K
+  (BA.11.F) has not shipped — pinning now would fabricate a contract version (Standing Rule 6).
+- **Why:** Polish work (dark theme, tablet-aware layout, clearer reconnect UX, a real app icon) was
+  ready and contract-free, so it shipped now rather than waiting on the unrelated upstream freeze;
+  the pin+tag half is left as an explicit follow-up once `bastion` Block K lands.
+- **Refs:** commits `d47c943`..`4a39821` (tasks 1–6) + `47b69ea` (docs); spec at
+  `planning/4.A-polish-v0.1/`.
+- Next: pick up the deferred serve-api v1.0.0 pin + v0.1 tag once `bastion` Block K (BA.11.F) ships,
+  or start `BU.5.A` (Engine workflow screen) once that unblocks it.
+
+```
+47b69ea docs: update docs for 4.A-polish-v0.1
+4a39821 feat: implement 4.A-polish-v0.1-task6
+ba4c8e1 feat: implement 4.A-polish-v0.1-task5
+e52ea04 feat: implement 4.A-polish-v0.1-task4
+1e1f5a9 feat: implement 4.A-polish-v0.1-task3
+d1cd3f6 feat: implement 4.A-polish-v0.1-task2
+d47c943 feat: implement 4.A-polish-v0.1-task1
+e2340df docs: log e2e coverage round 2 (BU.9.A-E) + upstream §12.3 fix
+```
+
 ## [2026-07-19]
 
 ### E2E coverage round 2 (BU.9.A–E) + upstream §12.3 fix
