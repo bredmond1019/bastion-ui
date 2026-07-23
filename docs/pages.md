@@ -46,15 +46,22 @@ server host, port (default `4317`), and bearer token; validates all three, then 
 ## `SessionsListScreen`
 
 Tab 0. Watches `sessionsProvider` (live session list) and `needsInputProvider` (flagged
-session names), rendering one `SessionCard` per session (sorted by name). Tapping a
-card navigates to `/sessions/<name>` via `sessionDetailRouteName(name)`.
+session names), rendering one `SessionCard` per session (sorted by name). Below the
+`ResponsiveScaffold` tablet breakpoint (720dp), tapping a card navigates to
+`/sessions/<name>` via `sessionDetailRouteName(name)`, unchanged. At/above the
+breakpoint (`ResponsiveScaffold.isWide`), tapping a card instead sets
+`selectedSessionProvider` and the screen renders the list and an inline
+`SessionDetailScreen(embedded: true)` for the selected session side by side via
+`ResponsiveScaffold` (BU.4.A).
 
 ## `SessionDetailScreen`
 
 Route: `/sessions/<name>` (route argument: `sessionName`). Watches
 `paneProvider(sessionName)` for the live pane buffer, rendering `PaneView` +
 `ApproveButtonRow` + a free-text send bar (`_SendBar`, sends literal keys via
-`BastionApi.sendKeys` on submit).
+`BastionApi.sendKeys` on submit). Takes an `embedded` flag (default `false`); when
+`true` (rendered inline as `SessionsListScreen`'s tablet detail pane rather than pushed
+as its own route) the AppBar's implied back button is suppressed (BU.4.A).
 
 ## `DashboardScreen`
 

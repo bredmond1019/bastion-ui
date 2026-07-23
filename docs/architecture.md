@@ -22,6 +22,8 @@ git/tmux, and stores the bearer token via `flutter_secure_storage`.
 ```
 lib/
 ├── main.dart               ← app entry, HomeShell (socket/API lifecycle), routing, tab bar
+├── theme/
+│   └── app_theme.dart       — AppTheme.light/dark Material 3 ThemeData (blueGrey seed)
 ├── models/                 ← pure-Dart DTOs + frame (de)serialization (no Flutter imports)
 │   ├── dto.dart             — HealthDto, ErrorPayload
 │   ├── frame.dart           — BastionFrame sealed hierarchy (WS envelope)
@@ -49,6 +51,7 @@ lib/
 │   └── quick_actions_screen.dart
 └── widgets/                 ← presentational, mostly provider-free components
     ├── connection_banner.dart
+    ├── responsive_scaffold.dart — ResponsiveScaffold (phone/tablet list+detail split, isWide helper)
     ├── session_card.dart
     ├── pane_view.dart
     ├── approve_button_row.dart
@@ -72,7 +75,9 @@ lib/
    plain `StateProvider<T?>`s, `null` until set, so screens pushed via the app's
    `Navigator` (an ancestor of `HomeShell`) still see the same live instances.
 3. Bridges `BastionSocket.statusStream` into `connectionProvider` so `ConnectionBanner`
-   and other widgets update in real time.
+   and other widgets update in real time. `ConnectionBanner` shows distinct copy per
+   `ConnectionStatus` (a subtitle CTA for `disconnected`, explanatory text for
+   `reconnecting`) and is tappable in every state to push `SettingsScreen`.
 4. Watches `connectionProvider` for config changes (e.g. after `SettingsScreen` saves)
    and reconnects automatically.
 
@@ -180,6 +185,25 @@ re-seed can never clobber newer WS-delivered state.
   `BastionApi.postCommand(CommandRequest)`, surfaces `ApiError`/`FatalAuthError`
   inline, and on success pops the sheet with the server-returned session id, which
   `QuickActionsScreen` uses to navigate to `/sessions/<name>`.
+
+## Theming + responsive split (BU.4.A)
+
+- `AppTheme` (`theme/app_theme.dart`) exposes `AppTheme.light`/`AppTheme.dark`, two
+  Material 3 `ThemeData` instances built from the same `blueGrey` seed via
+  `ColorScheme.fromSeed` (the dark variant passes `Brightness.dark` — a genuine dark
+  scheme, not the light one dimmed). `main.dart`'s `MaterialApp` supplies both as
+  `theme`/`darkTheme` with `themeMode: ThemeMode.system`, replacing the previous inline
+  `ThemeData`.
+- `ResponsiveScaffold` (`widgets/responsive_scaffold.dart`) renders `list` alone below a
+  720dp-wide breakpoint (`kTabletBreakpoint`) and a `list` + `detail` `Row` split (flex
+  2:5) at/above it. The static `ResponsiveScaffold.isWide(context)` helper exposes the
+  same threshold so callers can branch push-navigation vs. inline selection.
+- `SessionsListScreen` is the first consumer: on tablet widths it renders the sessions
+  list and an inline `SessionDetailScreen(embedded: true)` for the
+  `selectedSessionProvider`-selected session side by side via `ResponsiveScaffold`; on
+  phone widths, tapping a `SessionCard` still pushes `/sessions/<name>` unchanged.
+  `SessionDetailScreen`'s `embedded` flag suppresses the implied AppBar back button
+  when rendered inline (there is no route to pop back from).
 
 ## Known contract gap
 
