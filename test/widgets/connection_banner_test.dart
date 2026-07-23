@@ -10,6 +10,7 @@ import 'package:flutter/material.dart' hide ConnectionState;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:bastion_ui/screens/settings_screen.dart';
 import 'package:bastion_ui/state/connection_provider.dart';
 import 'package:bastion_ui/widgets/connection_banner.dart';
 
@@ -85,6 +86,13 @@ void main() {
       await tester.pumpWidget(_buildBanner(ConnectionStatus.reconnecting));
       expect(find.text('Reconnecting…'), findsOneWidget);
       expect(find.byIcon(Icons.wifi_tethering), findsOneWidget);
+      // Reconnecting has distinct explanatory copy (not just the disconnected
+      // call-to-action) and does not show the chevron affordance icon.
+      expect(
+        find.text('Trying to restore the link to bastion serve'),
+        findsOneWidget,
+      );
+      expect(find.byIcon(Icons.chevron_right), findsNothing);
     });
 
     testWidgets('shows "Disconnected" for ConnectionStatus.disconnected', (
@@ -93,7 +101,44 @@ void main() {
       await tester.pumpWidget(_buildBanner(ConnectionStatus.disconnected));
       expect(find.text('Disconnected'), findsOneWidget);
       expect(find.byIcon(Icons.wifi_off), findsOneWidget);
+      // Disconnected is the only state with a call-to-action + chevron icon.
+      expect(find.text('Tap to check your server settings'), findsOneWidget);
+      expect(find.byIcon(Icons.chevron_right), findsOneWidget);
     });
+
+    testWidgets(
+      'connecting and connected states show no subtitle or chevron icon',
+      (tester) async {
+        await tester.pumpWidget(_buildBanner(ConnectionStatus.connecting));
+        expect(find.byIcon(Icons.chevron_right), findsNothing);
+
+        await tester.pumpWidget(_buildBanner(ConnectionStatus.connected));
+        expect(find.byIcon(Icons.chevron_right), findsNothing);
+      },
+    );
+
+    testWidgets('tapping the banner opens SettingsScreen', (tester) async {
+      await tester.pumpWidget(_buildBanner(ConnectionStatus.disconnected));
+
+      expect(find.byType(SettingsScreen), findsNothing);
+
+      await tester.tap(find.byType(ConnectionBanner));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(SettingsScreen), findsOneWidget);
+    });
+
+    testWidgets(
+      'tapping the banner in a connected state also opens SettingsScreen',
+      (tester) async {
+        await tester.pumpWidget(_buildBanner(ConnectionStatus.connected));
+
+        await tester.tap(find.byType(ConnectionBanner));
+        await tester.pumpAndSettle();
+
+        expect(find.byType(SettingsScreen), findsOneWidget);
+      },
+    );
 
     testWidgets('banner updates when provider state changes', (tester) async {
       // Start in disconnected state.
