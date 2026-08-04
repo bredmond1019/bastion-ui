@@ -1,0 +1,20 @@
+name: ci
+
+# Thin caller — invokes base-template's reusable Flutter gate workflow,
+# which mirrors this repo's planning/harness.json checks in declared order
+# (dart format, flutter analyze, flutter test --exclude-tags e2e). See
+# base-template/docs/ci.md for the opt-in model and the local
+# actionlint -> act -> push validation loop.
+#
+# Flutter under `act` is unreliable (Docker-based act runs don't replicate
+# the Flutter SDK toolchain well) — this caller was validated with
+# actionlint only, not a local act run. See base-template/docs/ci.md's
+# Deviations table.
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  gate:
+    uses: bredmond1019/agentic-base-template/.github/workflows/gate-flutter.yml@main
