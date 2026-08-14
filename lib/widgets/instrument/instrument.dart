@@ -12,4 +12,5 @@ library;
 
 export 'age_chip.dart';
 export 'lane_bar.dart';
+export 'sparkline.dart';
 export 'stat_tile.dart';
