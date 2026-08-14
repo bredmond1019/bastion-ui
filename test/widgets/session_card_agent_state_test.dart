@@ -9,6 +9,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:bastion_ui/models/session_dto.dart';
+import 'package:bastion_ui/theme/app_theme.dart';
+import 'package:bastion_ui/widgets/brand/brand.dart';
 import 'package:bastion_ui/widgets/session_card.dart';
 
 SessionDto _session(AgentState agentState) => SessionDto(
@@ -20,40 +22,47 @@ SessionDto _session(AgentState agentState) => SessionDto(
 
 Widget _buildCard(AgentState agentState) {
   return MaterialApp(
+    theme: AppTheme.dark,
     home: Scaffold(body: SessionCard(session: _session(agentState))),
   );
 }
 
 void main() {
-  testWidgets('working renders a "working" chip', (tester) async {
+  // `StatusPill` uppercases its label internally (`BU.10.C` task 2), so the
+  // rendered text is `WORKING`/`IDLE`/`BLOCKED` even though the chip's own
+  // tooltip text (owned by `_AgentStateChip`, not `StatusPill`) stays
+  // lowercase.
+  testWidgets('working renders a "WORKING" chip', (tester) async {
     await tester.pumpWidget(_buildCard(AgentState.working));
 
-    expect(find.text('working'), findsOneWidget);
+    expect(find.text('WORKING'), findsOneWidget);
     expect(find.byTooltip('Agent working'), findsOneWidget);
+    expect(find.byType(StatusPill), findsOneWidget);
   });
 
-  testWidgets('idle renders an "idle" chip', (tester) async {
+  testWidgets('idle renders an "IDLE" chip', (tester) async {
     await tester.pumpWidget(_buildCard(AgentState.idle));
 
-    expect(find.text('idle'), findsOneWidget);
+    expect(find.text('IDLE'), findsOneWidget);
     expect(find.byTooltip('Agent idle'), findsOneWidget);
   });
 
-  testWidgets('blocked renders a "blocked" chip', (tester) async {
+  testWidgets('blocked renders a "BLOCKED" chip', (tester) async {
     await tester.pumpWidget(_buildCard(AgentState.blocked));
 
-    expect(find.text('blocked'), findsOneWidget);
+    expect(find.text('BLOCKED'), findsOneWidget);
     expect(find.byTooltip('Agent blocked'), findsOneWidget);
   });
 
   testWidgets('unknown renders no agent-state chip', (tester) async {
     await tester.pumpWidget(_buildCard(AgentState.unknown));
 
-    expect(find.text('unknown'), findsNothing);
-    expect(find.text('working'), findsNothing);
-    expect(find.text('idle'), findsNothing);
-    expect(find.text('blocked'), findsNothing);
+    expect(find.text('UNKNOWN'), findsNothing);
+    expect(find.text('WORKING'), findsNothing);
+    expect(find.text('IDLE'), findsNothing);
+    expect(find.text('BLOCKED'), findsNothing);
     expect(find.byTooltip('Agent unknown'), findsNothing);
+    expect(find.byType(StatusPill), findsNothing);
   });
 
   testWidgets(
