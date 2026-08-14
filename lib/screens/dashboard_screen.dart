@@ -97,11 +97,9 @@ class _RepoRow extends ConsumerWidget {
         onTap: () =>
             Navigator.of(context).pushNamed(repoDetailRouteName(repo.name)),
         title: Text(repo.name),
-        subtitle: Text(
-          repo.now.isNotEmpty ? repo.now : ' ',
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-        ),
+        subtitle: repo.now.isNotEmpty
+            ? Text(repo.now, maxLines: 1, overflow: TextOverflow.ellipsis)
+            : null,
         trailing: StatusBadge(state: state),
       ),
     );
