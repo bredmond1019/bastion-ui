@@ -1,8 +1,10 @@
 /// A single session summary card for the sessions-list screen.
 ///
 /// Renders a running/idle badge (from [SessionDto.state]), the session name,
-/// its last foreground line, and — when [needsInput] is true — a
-/// needs-input flag badge driven by `events_provider.dart`.
+/// its last foreground line, an agent-activity chip (from
+/// [SessionDto.agentState] — distinct from the running/idle badge, see
+/// [_AgentStateChip]), and — when [needsInput] is true — a needs-input flag
+/// badge driven by `events_provider.dart`.
 ///
 /// Purely presentational: does not read providers itself, so it stays easy
 /// to unit-test with plain constructor arguments.
@@ -41,7 +43,16 @@ class SessionCard extends StatelessWidget {
       child: ListTile(
         onTap: onTap,
         leading: _StateBadge(isRunning: _isRunning),
-        title: Text(session.name),
+        title: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Flexible(child: Text(session.name)),
+            if (session.agentState != AgentState.unknown) ...[
+              const SizedBox(width: 8),
+              _AgentStateChip(agentState: session.agentState),
+            ],
+          ],
+        ),
         subtitle: Text(
           session.lastLine?.isNotEmpty == true ? session.lastLine! : ' ',
           maxLines: 1,
@@ -69,6 +80,72 @@ class _StateBadge extends StatelessWidget {
         backgroundColor: isRunning
             ? const Color(0xFF388E3C) // green 700
             : const Color(0xFF9E9E9E), // grey 500
+      ),
+    );
+  }
+}
+
+/// Labelled chip surfacing [SessionDto.agentState] — detected AGENT
+/// activity, as opposed to [_StateBadge]'s tmux PANE liveness. The two are
+/// independent (a session can be `state: running` with `agent_state:
+/// idle`), so this is a distinct affordance rather than a replacement for
+/// the leading dot. [AgentState.unknown] renders no chip at all (handled by
+/// the caller) — an unknown state is noise, not signal.
+///
+/// `blocked` carries the most visual weight (bold text, filled background):
+/// it is the state the operator most needs to act on.
+class _AgentStateChip extends StatelessWidget {
+  const _AgentStateChip({required this.agentState});
+
+  final AgentState agentState;
+
+  String get _label {
+    switch (agentState) {
+      case AgentState.working:
+        return 'working';
+      case AgentState.idle:
+        return 'idle';
+      case AgentState.blocked:
+        return 'blocked';
+      case AgentState.unknown:
+        return 'unknown';
+    }
+  }
+
+  Color get _color {
+    switch (agentState) {
+      case AgentState.working:
+        return const Color(0xFF1976D2); // blue 700
+      case AgentState.idle:
+        return const Color(0xFF757575); // grey 600
+      case AgentState.blocked:
+        return const Color(0xFFD32F2F); // red 700
+      case AgentState.unknown:
+        return const Color(0xFF757575); // grey 600
+    }
+  }
+
+  bool get _emphasized => agentState == AgentState.blocked;
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: 'Agent $_label',
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+        decoration: BoxDecoration(
+          color: _emphasized ? _color : _color.withValues(alpha: 0.12),
+          borderRadius: BorderRadius.circular(4),
+          border: _emphasized ? null : Border.all(color: _color, width: 1),
+        ),
+        child: Text(
+          _label,
+          style: TextStyle(
+            fontSize: 11,
+            fontWeight: _emphasized ? FontWeight.bold : FontWeight.w500,
+            color: _emphasized ? const Color(0xFFFFFFFF) : _color,
+          ),
+        ),
       ),
     );
   }
