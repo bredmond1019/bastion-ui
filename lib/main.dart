@@ -59,9 +59,8 @@ class BastionApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'BastionUI',
-      theme: AppTheme.light,
-      darkTheme: AppTheme.dark,
-      themeMode: ThemeMode.system,
+      theme: AppTheme.dark,
+      themeMode: ThemeMode.dark,
       home: const HomeShell(),
       // Handles `sessionDetailRouteName(name)` pushes from
       // `SessionsListScreen`'s session cards and `repoDetailRouteName(name)`
