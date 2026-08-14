@@ -11,6 +11,7 @@
 library;
 
 export 'age_chip.dart';
+export 'gate_card.dart';
 export 'lane_bar.dart';
 export 'severity_row.dart';
 export 'sparkline.dart';
