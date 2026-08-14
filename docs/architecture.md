@@ -23,7 +23,15 @@ git/tmux, and stores the bearer token via `flutter_secure_storage`.
 lib/
 ├── main.dart               ← app entry, HomeShell (socket/API lifecycle), routing, tab bar
 ├── theme/
-│   └── app_theme.dart       — AppTheme.light/dark Material 3 ThemeData (blueGrey seed)
+│   ├── app_theme.dart       — AppTheme.dark: single explicit Material 3 ThemeData built
+│   │                          from AppTokens/StatusTones/AppTypography (no ColorScheme.fromSeed)
+│   ├── tokens.dart          — AppTokens: cool-aurora color palette, radius ladder, glow
+│   │                          values, alpha() helper
+│   ├── status_tones.dart    — StatusTones ThemeExtension: 6 semantic tones (neutral/info/
+│   │                          active/success/warning/danger), each fg/bg/border; ThemeData/
+│   │                          BuildContext.statusTones accessors
+│   └── typography.dart      — AppTypography.textTheme: Inter (display/headline/title),
+│                                Source Sans 3 (body/label), JetBrains Mono (labelMedium/mono)
 ├── models/                 ← pure-Dart DTOs + frame (de)serialization (no Flutter imports)
 │   ├── dto.dart             — HealthDto, ErrorPayload
 │   ├── frame.dart           — BastionFrame sealed hierarchy (WS envelope)
@@ -186,14 +194,23 @@ re-seed can never clobber newer WS-delivered state.
   inline, and on success pops the sheet with the server-returned session id, which
   `QuickActionsScreen` uses to navigate to `/sessions/<name>`.
 
-## Theming + responsive split (BU.4.A)
+## Theming + responsive split (BU.4.A, BU.10.A)
 
-- `AppTheme` (`theme/app_theme.dart`) exposes `AppTheme.light`/`AppTheme.dark`, two
-  Material 3 `ThemeData` instances built from the same `blueGrey` seed via
-  `ColorScheme.fromSeed` (the dark variant passes `Brightness.dark` — a genuine dark
-  scheme, not the light one dimmed). `main.dart`'s `MaterialApp` supplies both as
-  `theme`/`darkTheme` with `themeMode: ThemeMode.system`, replacing the previous inline
-  `ThemeData`.
+- `AppTheme.dark` (`theme/app_theme.dart`) is a single, cached (`static final`) Material 3
+  `ThemeData`, hand-built from `AppTokens` (color/radius/glow), `StatusTones.dark`, and
+  `AppTypography.textTheme` — no `ColorScheme.fromSeed`. `main.dart`'s `MaterialApp` wires
+  `theme: AppTheme.dark` / `themeMode: ThemeMode.dark`; there is no `AppTheme.light` and no
+  `darkTheme` param (dark-only brand app, not a system-following light/dark pair).
+- `StatusTones` is a `ThemeExtension<StatusTones>` registered in `AppTheme.dark.extensions`,
+  giving six semantic tones (`neutral`/`info`/`active`/`success`/`warning`/`danger`), each a
+  `StatusTone(foreground, background, border)`. Read it via `Theme.of(context).statusTones` or
+  `context.statusTones` (extension methods with a safe `StatusTones.dark` fallback if
+  unregistered). Named widgets (`ConnectionBanner`, `SessionCard`'s agent-state chip,
+  `StatusBadge`, `PaneView`) source all state colors from this instead of hardcoded
+  `Color(0x...)` literals — enforced by a guard test (`test/theme/no_color_literals_test.dart`)
+  that fails on any `Color(0x...)`/`Colors.black`/`Colors.white` literal outside `lib/theme/`.
+- Brand fonts (Inter, Source Sans 3, JetBrains Mono — vendored OFL variable TTFs under
+  `assets/fonts/`, declared in `pubspec.yaml`) are wired in via `AppTypography.textTheme`.
 - `ResponsiveScaffold` (`widgets/responsive_scaffold.dart`) renders `list` alone below a
   720dp-wide breakpoint (`kTabletBreakpoint`) and a `list` + `detail` `Row` split (flex
   2:5) at/above it. The static `ResponsiveScaffold.isWide(context)` helper exposes the
