@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:bastion_ui/theme/tokens.dart';
+import 'package:bastion_ui/widgets/brand/brand.dart';
 import 'package:bastion_ui/widgets/responsive_scaffold.dart';
 
 Widget _atWidth(double width, {required Widget child}) {
@@ -24,6 +25,9 @@ void main() {
       );
       expect(find.byKey(const ValueKey('list')), findsOneWidget);
       expect(find.byKey(const ValueKey('detail')), findsNothing);
+      // Phone presentation: the lockup rides in a real AppBar.
+      expect(find.byType(BastielLockup), findsOneWidget);
+      expect(find.byType(AppBar), findsOneWidget);
     });
 
     testWidgets('tablet width (>= breakpoint) shows list and detail', (
@@ -49,6 +53,21 @@ void main() {
             .first,
       );
       expect(listGround.color, AppTokens.surface);
+
+      // Tablet presentation: the lockup is the rail's header, above `list`.
+      expect(find.byType(BastielLockup), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find
+              .ancestor(
+                of: find.byKey(const ValueKey('list')),
+                matching: find.byType(ColoredBox),
+              )
+              .first,
+          matching: find.byType(BastielLockup),
+        ),
+        findsOneWidget,
+      );
     });
 
     testWidgets('isWide reflects the breakpoint', (t) async {
