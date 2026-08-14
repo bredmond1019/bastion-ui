@@ -8,69 +8,7 @@ import 'package:bastion_ui/models/action_dto.dart';
 import 'package:bastion_ui/models/dto.dart';
 import 'package:bastion_ui/services/bastion_api.dart';
 
-// ---------------------------------------------------------------------------
-// Fake transport (no real network)
-// ---------------------------------------------------------------------------
-
-/// A recorded request made against [FakeHttpTransport].
-typedef RecordedCall = ({
-  String method,
-  String url,
-  Map<String, String> headers,
-  String? body,
-});
-
-/// Stub [HttpTransport] for unit tests.
-///
-/// Pre-programme responses with [setResponse]; each request consumes the
-/// first queued entry (FIFO), regardless of HTTP method. Records every call
-/// (method, url, headers, body) in [calls].
-final class FakeHttpTransport implements HttpTransport {
-  final List<RecordedCall> calls = [];
-  final List<({int statusCode, String body})> _responses = [];
-
-  void setResponse({required int statusCode, required Object body}) {
-    final encoded = body is String ? body : jsonEncode(body);
-    _responses.add((statusCode: statusCode, body: encoded));
-  }
-
-  ({int statusCode, String body}) _consume(String method, String url) {
-    if (_responses.isEmpty) {
-      throw StateError(
-        'FakeHttpTransport: no response queued for $method $url',
-      );
-    }
-    return _responses.removeAt(0);
-  }
-
-  @override
-  Future<({int statusCode, String body})> get(
-    String url, {
-    Map<String, String> headers = const {},
-  }) async {
-    calls.add((method: 'GET', url: url, headers: headers, body: null));
-    return _consume('GET', url);
-  }
-
-  @override
-  Future<({int statusCode, String body})> post(
-    String url, {
-    Map<String, String> headers = const {},
-    String? body,
-  }) async {
-    calls.add((method: 'POST', url: url, headers: headers, body: body));
-    return _consume('POST', url);
-  }
-
-  @override
-  Future<({int statusCode, String body})> delete(
-    String url, {
-    Map<String, String> headers = const {},
-  }) async {
-    calls.add((method: 'DELETE', url: url, headers: headers, body: null));
-    return _consume('DELETE', url);
-  }
-}
+import '../support/fake_http_transport.dart';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -91,8 +29,11 @@ void main() {
   group('BastionApi.getHealth', () {
     test('returns HealthDto on 200 with correct JSON', () async {
       final t = FakeHttpTransport();
-      t.setResponse(
-        statusCode: 200,
+      t.on(
+        'GET',
+        '/health',
+
+        status: 200,
         body: {'status': 'ok', 'service': 'bastion'},
       );
       final api = makeApi(t);
@@ -105,8 +46,11 @@ void main() {
 
     test('hits the correct URL', () async {
       final t = FakeHttpTransport();
-      t.setResponse(
-        statusCode: 200,
+      t.on(
+        'GET',
+        '/health',
+
+        status: 200,
         body: {'status': 'ok', 'service': 'bastion'},
       );
       final api = makeApi(t);
@@ -117,8 +61,11 @@ void main() {
 
     test('sends Authorization header on /health', () async {
       final t = FakeHttpTransport();
-      t.setResponse(
-        statusCode: 200,
+      t.on(
+        'GET',
+        '/health',
+
+        status: 200,
         body: {'status': 'ok', 'service': 'bastion'},
       );
       final api = makeApi(t);
@@ -129,8 +76,11 @@ void main() {
 
     test('throws FatalAuthError on 401', () async {
       final t = FakeHttpTransport();
-      t.setResponse(
-        statusCode: 401,
+      t.on(
+        'GET',
+        '/health',
+
+        status: 401,
         body: {'error': 'unauthorized', 'code': 'unauthorized'},
       );
       final api = makeApi(t);
@@ -140,8 +90,11 @@ void main() {
 
     test('FatalAuthError carries parsed ErrorPayload', () async {
       final t = FakeHttpTransport();
-      t.setResponse(
-        statusCode: 401,
+      t.on(
+        'GET',
+        '/health',
+
+        status: 401,
         body: {'error': 'unauthorized', 'code': 'unauthorized'},
       );
       final api = makeApi(t);
@@ -157,7 +110,7 @@ void main() {
 
     test('throws FatalAuthError on 401 with non-JSON body', () async {
       final t = FakeHttpTransport();
-      t.setResponse(statusCode: 401, body: 'not json');
+      t.on('GET', '/health', status: 401, body: 'not json');
       final api = makeApi(t);
 
       await expectLater(api.getHealth(), throwsA(isA<FatalAuthError>()));
@@ -165,7 +118,7 @@ void main() {
 
     test('throws ApiError on non-401 HTTP error', () async {
       final t = FakeHttpTransport();
-      t.setResponse(statusCode: 500, body: 'internal server error');
+      t.on('GET', '/health', status: 500, body: 'internal server error');
       final api = makeApi(t);
 
       await expectLater(api.getHealth(), throwsA(isA<ApiError>()));
@@ -173,7 +126,7 @@ void main() {
 
     test('ApiError carries status code', () async {
       final t = FakeHttpTransport();
-      t.setResponse(statusCode: 503, body: 'unavailable');
+      t.on('GET', '/health', status: 503, body: 'unavailable');
       final api = makeApi(t);
 
       try {
@@ -186,7 +139,7 @@ void main() {
 
     test('throws ApiError on 200 with invalid JSON', () async {
       final t = FakeHttpTransport();
-      t.setResponse(statusCode: 200, body: 'not-json!!');
+      t.on('GET', '/health', status: 200, body: 'not-json!!');
       final api = makeApi(t);
 
       await expectLater(api.getHealth(), throwsA(isA<ApiError>()));
@@ -196,8 +149,11 @@ void main() {
   group('BastionApi base URL construction', () {
     test('constructs correct base URL from host and port', () async {
       final t = FakeHttpTransport();
-      t.setResponse(
-        statusCode: 200,
+      t.on(
+        'GET',
+        '/health',
+
+        status: 200,
         body: {'status': 'ok', 'service': 'bastion'},
       );
       final api = BastionApi(
@@ -229,8 +185,11 @@ void main() {
   group('BastionApi.getSessions', () {
     test('returns SessionDto list on 200 with correct JSON', () async {
       final t = FakeHttpTransport();
-      t.setResponse(
-        statusCode: 200,
+      t.on(
+        'GET',
+        '/api/sessions',
+
+        status: 200,
         body: [
           {'name': 'main', 'state': 'running', 'last_line': '\$ cargo test'},
           {'name': 'scratch', 'state': 'idle', 'last_line': ''},
@@ -249,7 +208,7 @@ void main() {
 
     test('returns empty list for an empty tmux server', () async {
       final t = FakeHttpTransport();
-      t.setResponse(statusCode: 200, body: []);
+      t.on('GET', '/api/sessions', status: 200, body: []);
       final api = makeApi(t);
 
       final sessions = await api.getSessions();
@@ -259,7 +218,7 @@ void main() {
 
     test('hits GET /api/sessions', () async {
       final t = FakeHttpTransport();
-      t.setResponse(statusCode: 200, body: []);
+      t.on('GET', '/api/sessions', status: 200, body: []);
       final api = makeApi(t);
       await api.getSessions();
 
@@ -269,8 +228,11 @@ void main() {
 
     test('throws FatalAuthError on 401', () async {
       final t = FakeHttpTransport();
-      t.setResponse(
-        statusCode: 401,
+      t.on(
+        'GET',
+        '/api/sessions',
+
+        status: 401,
         body: {'error': 'unauthorized', 'code': 'unauthorized'},
       );
       final api = makeApi(t);
@@ -280,8 +242,11 @@ void main() {
 
     test('throws ApiError on tmux degradation (503)', () async {
       final t = FakeHttpTransport();
-      t.setResponse(
-        statusCode: 503,
+      t.on(
+        'GET',
+        '/api/sessions',
+
+        status: 503,
         body: {'code': 'C001', 'message': 'no tmux server running'},
       );
       final api = makeApi(t);
@@ -291,7 +256,7 @@ void main() {
 
     test('throws ApiError when the body is not a JSON array', () async {
       final t = FakeHttpTransport();
-      t.setResponse(statusCode: 200, body: {'not': 'a list'});
+      t.on('GET', '/api/sessions', status: 200, body: {'not': 'a list'});
       final api = makeApi(t);
 
       await expectLater(api.getSessions(), throwsA(isA<ApiError>()));
@@ -301,8 +266,11 @@ void main() {
   group('BastionApi.getPane', () {
     test('returns PaneDto on 200 with correct JSON', () async {
       final t = FakeHttpTransport();
-      t.setResponse(
-        statusCode: 200,
+      t.on(
+        'GET',
+        '/api/sessions/main/pane',
+
+        status: 200,
         body: {
           'session_name': 'main',
           'lines': ['line1', 'line2'],
@@ -318,8 +286,11 @@ void main() {
 
     test('hits GET /api/sessions/{name}/pane without lines param', () async {
       final t = FakeHttpTransport();
-      t.setResponse(
-        statusCode: 200,
+      t.on(
+        'GET',
+        '/api/sessions/main/pane',
+
+        status: 200,
         body: {'session_name': 'main', 'lines': []},
       );
       final api = makeApi(t);
@@ -333,8 +304,11 @@ void main() {
 
     test('appends ?lines=N when lines is given', () async {
       final t = FakeHttpTransport();
-      t.setResponse(
-        statusCode: 200,
+      t.on(
+        'GET',
+        '/api/sessions/main/pane',
+
+        status: 200,
         body: {'session_name': 'main', 'lines': []},
       );
       final api = makeApi(t);
@@ -348,8 +322,11 @@ void main() {
 
     test('URL-encodes the session name', () async {
       final t = FakeHttpTransport();
-      t.setResponse(
-        statusCode: 200,
+      t.on(
+        'GET',
+        '/api/sessions/my%20session/pane',
+
+        status: 200,
         body: {'session_name': 'my session', 'lines': []},
       );
       final api = makeApi(t);
@@ -363,8 +340,11 @@ void main() {
 
     test('throws ApiError on 404 when the session does not exist', () async {
       final t = FakeHttpTransport();
-      t.setResponse(
-        statusCode: 404,
+      t.on(
+        'GET',
+        '/api/sessions/nosuch/pane',
+
+        status: 404,
         body: {'code': 'C002', 'message': "session not found"},
       );
       final api = makeApi(t);
@@ -376,7 +356,7 @@ void main() {
   group('BastionApi.sendKeys', () {
     test('POSTs keys and returns normally on 204', () async {
       final t = FakeHttpTransport();
-      t.setResponse(statusCode: 204, body: '');
+      t.on('POST', '/api/sessions/main/send', status: 204, body: '');
       final api = makeApi(t);
 
       await api.sendKeys('main', 'cargo test');
@@ -391,8 +371,11 @@ void main() {
 
     test('throws ApiError on 404', () async {
       final t = FakeHttpTransport();
-      t.setResponse(
-        statusCode: 404,
+      t.on(
+        'POST',
+        '/api/sessions/nosuch/send',
+
+        status: 404,
         body: {'code': 'C002', 'message': 'session not found'},
       );
       final api = makeApi(t);
@@ -402,8 +385,11 @@ void main() {
 
     test('throws FatalAuthError on 401', () async {
       final t = FakeHttpTransport();
-      t.setResponse(
-        statusCode: 401,
+      t.on(
+        'POST',
+        '/api/sessions/main/send',
+
+        status: 401,
         body: {'error': 'unauthorized', 'code': 'unauthorized'},
       );
       final api = makeApi(t);
@@ -418,7 +404,7 @@ void main() {
   group('BastionApi.sendKey', () {
     test('POSTs a named key and returns normally on 204', () async {
       final t = FakeHttpTransport();
-      t.setResponse(statusCode: 204, body: '');
+      t.on('POST', '/api/sessions/main/key', status: 204, body: '');
       final api = makeApi(t);
 
       await api.sendKey('main', 'Escape');
@@ -431,8 +417,11 @@ void main() {
 
     test('throws ApiError on 404', () async {
       final t = FakeHttpTransport();
-      t.setResponse(
-        statusCode: 404,
+      t.on(
+        'POST',
+        '/api/sessions/nosuch/key',
+
+        status: 404,
         body: {'code': 'C002', 'message': 'session not found'},
       );
       final api = makeApi(t);
@@ -447,7 +436,7 @@ void main() {
   group('BastionApi.createSession', () {
     test('POSTs name only and returns normally on 201', () async {
       final t = FakeHttpTransport();
-      t.setResponse(statusCode: 201, body: '');
+      t.on('POST', '/api/sessions', status: 201, body: '');
       final api = makeApi(t);
 
       await api.createSession('mysession');
@@ -460,7 +449,7 @@ void main() {
 
     test('POSTs name and dir when dir is given', () async {
       final t = FakeHttpTransport();
-      t.setResponse(statusCode: 201, body: '');
+      t.on('POST', '/api/sessions', status: 201, body: '');
       final api = makeApi(t);
 
       await api.createSession('mysession', dir: '/home/user/project');
@@ -473,7 +462,7 @@ void main() {
 
     test('throws ApiError on 500 when the name is already in use', () async {
       final t = FakeHttpTransport();
-      t.setResponse(statusCode: 500, body: 'name in use');
+      t.on('POST', '/api/sessions', status: 500, body: 'name in use');
       final api = makeApi(t);
 
       await expectLater(
@@ -486,7 +475,7 @@ void main() {
   group('BastionApi.deleteSession', () {
     test('DELETEs the session and returns normally on 204', () async {
       final t = FakeHttpTransport();
-      t.setResponse(statusCode: 204, body: '');
+      t.on('DELETE', '/api/sessions/mysession', status: 204, body: '');
       final api = makeApi(t);
 
       await api.deleteSession('mysession');
@@ -498,7 +487,7 @@ void main() {
 
     test('URL-encodes the session name', () async {
       final t = FakeHttpTransport();
-      t.setResponse(statusCode: 204, body: '');
+      t.on('DELETE', '/api/sessions/my%20session', status: 204, body: '');
       final api = makeApi(t);
 
       await api.deleteSession('my session');
@@ -511,8 +500,11 @@ void main() {
 
     test('throws ApiError on 404 when the session does not exist', () async {
       final t = FakeHttpTransport();
-      t.setResponse(
-        statusCode: 404,
+      t.on(
+        'DELETE',
+        '/api/sessions/nosuch',
+
+        status: 404,
         body: {'code': 'C002', 'message': 'session not found'},
       );
       final api = makeApi(t);
@@ -522,8 +514,11 @@ void main() {
 
     test('throws FatalAuthError on 401', () async {
       final t = FakeHttpTransport();
-      t.setResponse(
-        statusCode: 401,
+      t.on(
+        'DELETE',
+        '/api/sessions/main',
+
+        status: 401,
         body: {'error': 'unauthorized', 'code': 'unauthorized'},
       );
       final api = makeApi(t);
@@ -538,8 +533,11 @@ void main() {
   group('BastionApi.getRepos', () {
     test('returns RepoSummaryDto list on 200 with correct JSON', () async {
       final t = FakeHttpTransport();
-      t.setResponse(
-        statusCode: 200,
+      t.on(
+        'GET',
+        '/api/repos',
+
+        status: 200,
         body: [
           {
             'name': 'bastion-ui',
@@ -563,7 +561,7 @@ void main() {
 
     test('hits GET /api/repos', () async {
       final t = FakeHttpTransport();
-      t.setResponse(statusCode: 200, body: []);
+      t.on('GET', '/api/repos', status: 200, body: []);
       final api = makeApi(t);
       await api.getRepos();
 
@@ -573,8 +571,11 @@ void main() {
 
     test('throws FatalAuthError on 401', () async {
       final t = FakeHttpTransport();
-      t.setResponse(
-        statusCode: 401,
+      t.on(
+        'GET',
+        '/api/repos',
+
+        status: 401,
         body: {'error': 'unauthorized', 'code': 'unauthorized'},
       );
       final api = makeApi(t);
@@ -584,7 +585,7 @@ void main() {
 
     test('throws ApiError on non-2xx HTTP error', () async {
       final t = FakeHttpTransport();
-      t.setResponse(statusCode: 500, body: 'internal server error');
+      t.on('GET', '/api/repos', status: 500, body: 'internal server error');
       final api = makeApi(t);
 
       await expectLater(api.getRepos(), throwsA(isA<ApiError>()));
@@ -594,8 +595,11 @@ void main() {
   group('BastionApi.getRepoStatus', () {
     test('returns RepoStatusDto on 200 with correct JSON', () async {
       final t = FakeHttpTransport();
-      t.setResponse(
-        statusCode: 200,
+      t.on(
+        'GET',
+        '/api/repos/bastion-ui/status',
+
+        status: 200,
         body: {
           'name': 'bastion-ui',
           'now': 'wiring dashboard',
@@ -622,8 +626,11 @@ void main() {
 
     test('hits GET /api/repos/{name}/status with URL-encoded name', () async {
       final t = FakeHttpTransport();
-      t.setResponse(
-        statusCode: 200,
+      t.on(
+        'GET',
+        '/api/repos/my%20repo/status',
+
+        status: 200,
         body: {
           'name': 'my repo',
           'now': '',
@@ -648,8 +655,11 @@ void main() {
 
     test('throws FatalAuthError on 401', () async {
       final t = FakeHttpTransport();
-      t.setResponse(
-        statusCode: 401,
+      t.on(
+        'GET',
+        '/api/repos/bastion-ui/status',
+
+        status: 401,
         body: {'error': 'unauthorized', 'code': 'unauthorized'},
       );
       final api = makeApi(t);
@@ -662,8 +672,11 @@ void main() {
 
     test('throws ApiError on 404 when the repo does not exist', () async {
       final t = FakeHttpTransport();
-      t.setResponse(
-        statusCode: 404,
+      t.on(
+        'GET',
+        '/api/repos/nosuch/status',
+
+        status: 404,
         body: {'code': 'C002', 'message': 'repo not found'},
       );
       final api = makeApi(t);
@@ -675,8 +688,11 @@ void main() {
   group('BastionApi.getRepoHandoff', () {
     test('returns HandoffInfo on 200 with correct JSON', () async {
       final t = FakeHttpTransport();
-      t.setResponse(
-        statusCode: 200,
+      t.on(
+        'GET',
+        '/api/repos/bastion-ui/handoff',
+
+        status: 200,
         body: {'title': 'Handoff — BU.1.A', 'body': '## Summary\n...'},
       );
       final api = makeApi(t);
@@ -690,7 +706,12 @@ void main() {
 
     test('hits GET /api/repos/{name}/handoff', () async {
       final t = FakeHttpTransport();
-      t.setResponse(statusCode: 200, body: {'title': 't', 'body': 'b'});
+      t.on(
+        'GET',
+        '/api/repos/bastion-ui/handoff',
+        status: 200,
+        body: {'title': 't', 'body': 'b'},
+      );
       final api = makeApi(t);
       await api.getRepoHandoff('bastion-ui');
 
@@ -702,8 +723,11 @@ void main() {
 
     test('returns null on 404 with code C002 (no handoff.md)', () async {
       final t = FakeHttpTransport();
-      t.setResponse(
-        statusCode: 404,
+      t.on(
+        'GET',
+        '/api/repos/bastion-ui/handoff',
+
+        status: 404,
         body: {'code': 'C002', 'message': 'no handoff.md'},
       );
       final api = makeApi(t);
@@ -715,8 +739,11 @@ void main() {
 
     test('throws ApiError on 404 with a different/no code', () async {
       final t = FakeHttpTransport();
-      t.setResponse(
-        statusCode: 404,
+      t.on(
+        'GET',
+        '/api/repos/bastion-ui/handoff',
+
+        status: 404,
         body: {'code': 'C999', 'message': 'something else'},
       );
       final api = makeApi(t);
@@ -729,7 +756,12 @@ void main() {
 
     test('throws ApiError on 404 with non-JSON body', () async {
       final t = FakeHttpTransport();
-      t.setResponse(statusCode: 404, body: 'not json');
+      t.on(
+        'GET',
+        '/api/repos/bastion-ui/handoff',
+        status: 404,
+        body: 'not json',
+      );
       final api = makeApi(t);
 
       await expectLater(
@@ -740,8 +772,11 @@ void main() {
 
     test('throws FatalAuthError on 401', () async {
       final t = FakeHttpTransport();
-      t.setResponse(
-        statusCode: 401,
+      t.on(
+        'GET',
+        '/api/repos/bastion-ui/handoff',
+
+        status: 401,
         body: {'error': 'unauthorized', 'code': 'unauthorized'},
       );
       final api = makeApi(t);
@@ -756,8 +791,11 @@ void main() {
   group('BastionApi.getRepoWorkflows', () {
     test('returns WorkflowStateDto list on 200 with correct JSON', () async {
       final t = FakeHttpTransport();
-      t.setResponse(
-        statusCode: 200,
+      t.on(
+        'GET',
+        '/api/repos/bastion-ui/workflows',
+
+        status: 200,
         body: [
           {
             'spec_slug': '2.A-dashboard-repo-detail',
@@ -781,7 +819,7 @@ void main() {
 
     test('hits GET /api/repos/{name}/workflows', () async {
       final t = FakeHttpTransport();
-      t.setResponse(statusCode: 200, body: []);
+      t.on('GET', '/api/repos/bastion-ui/workflows', status: 200, body: []);
       final api = makeApi(t);
       await api.getRepoWorkflows('bastion-ui');
 
@@ -793,8 +831,11 @@ void main() {
 
     test('throws FatalAuthError on 401', () async {
       final t = FakeHttpTransport();
-      t.setResponse(
-        statusCode: 401,
+      t.on(
+        'GET',
+        '/api/repos/bastion-ui/workflows',
+
+        status: 401,
         body: {'error': 'unauthorized', 'code': 'unauthorized'},
       );
       final api = makeApi(t);
@@ -807,7 +848,12 @@ void main() {
 
     test('throws ApiError on non-2xx HTTP error', () async {
       final t = FakeHttpTransport();
-      t.setResponse(statusCode: 500, body: 'internal server error');
+      t.on(
+        'GET',
+        '/api/repos/bastion-ui/workflows',
+        status: 500,
+        body: 'internal server error',
+      );
       final api = makeApi(t);
 
       await expectLater(
@@ -820,7 +866,12 @@ void main() {
   group('BastionApi.postCommand', () {
     test('POSTs an inject request and returns the target session id', () async {
       final t = FakeHttpTransport();
-      t.setResponse(statusCode: 200, body: {'session': 'main'});
+      t.on(
+        'POST',
+        '/api/actions/command',
+        status: 200,
+        body: {'session': 'main'},
+      );
       final api = makeApi(t);
 
       final session = await api.postCommand(
@@ -845,7 +896,12 @@ void main() {
 
     test('POSTs a spawn request and returns the target session id', () async {
       final t = FakeHttpTransport();
-      t.setResponse(statusCode: 200, body: {'session': 'work'});
+      t.on(
+        'POST',
+        '/api/actions/command',
+        status: 200,
+        body: {'session': 'work'},
+      );
       final api = makeApi(t);
 
       final session = await api.postCommand(
@@ -874,8 +930,11 @@ void main() {
 
     test('throws FatalAuthError on 401', () async {
       final t = FakeHttpTransport();
-      t.setResponse(
-        statusCode: 401,
+      t.on(
+        'POST',
+        '/api/actions/command',
+
+        status: 401,
         body: {'error': 'unauthorized', 'code': 'unauthorized'},
       );
       final api = makeApi(t);
@@ -896,8 +955,11 @@ void main() {
       'throws ApiError with statusCode 400 on bad mode/field combo',
       () async {
         final t = FakeHttpTransport();
-        t.setResponse(
-          statusCode: 400,
+        t.on(
+          'POST',
+          '/api/actions/command',
+
+          status: 400,
           body: {'code': 'C006', 'message': 'invalid request'},
         );
         final api = makeApi(t);
@@ -921,8 +983,11 @@ void main() {
       'throws ApiError with statusCode 404 on inject into unknown session',
       () async {
         final t = FakeHttpTransport();
-        t.setResponse(
-          statusCode: 404,
+        t.on(
+          'POST',
+          '/api/actions/command',
+
+          status: 404,
           body: {'code': 'C002', 'message': 'session not found'},
         );
         final api = makeApi(t);
@@ -946,8 +1011,11 @@ void main() {
       'throws ApiError with statusCode 504 on spawn readiness timeout',
       () async {
         final t = FakeHttpTransport();
-        t.setResponse(
-          statusCode: 504,
+        t.on(
+          'POST',
+          '/api/actions/command',
+
+          status: 504,
           body: {'code': 'C007', 'message': 'spawn readiness timeout'},
         );
         final api = makeApi(t);

@@ -13,6 +13,8 @@ import 'package:bastion_ui/state/sessions_provider.dart'
     show bastionApiProvider, bastionSocketProvider;
 import 'package:bastion_ui/state/workflows_provider.dart';
 
+import '../support/fake_http_transport.dart';
+
 // ---------------------------------------------------------------------------
 // Fakes (mirrors sessions_provider_test.dart / events_provider_test.dart)
 // ---------------------------------------------------------------------------
@@ -40,41 +42,6 @@ class FakeWsTransport implements WsTransport {
   Future<void> close() async {
     if (!_controller.isClosed) await _controller.close();
   }
-}
-
-class FakeHttpTransport implements HttpTransport {
-  final List<({int statusCode, String body})> _responses = [];
-  int getCallCount = 0;
-
-  void setResponse({required int statusCode, required Object body}) {
-    final encoded = body is String ? body : jsonEncode(body);
-    _responses.add((statusCode: statusCode, body: encoded));
-  }
-
-  @override
-  Future<({int statusCode, String body})> get(
-    String url, {
-    Map<String, String> headers = const {},
-  }) async {
-    getCallCount++;
-    if (_responses.isEmpty) {
-      throw StateError('FakeHttpTransport: no response queued for GET $url');
-    }
-    return _responses.removeAt(0);
-  }
-
-  @override
-  Future<({int statusCode, String body})> post(
-    String url, {
-    Map<String, String> headers = const {},
-    String? body,
-  }) => throw UnimplementedError('not exercised by this test');
-
-  @override
-  Future<({int statusCode, String body})> delete(
-    String url, {
-    Map<String, String> headers = const {},
-  }) => throw UnimplementedError('not exercised by this test');
 }
 
 /// Uses a real (non-zero) delay per round so rxdart's `.debounceTime(~150ms)`
@@ -211,9 +178,16 @@ void main() {
     });
 
     test('seeds status + workflows from REST on first watch', () async {
-      httpTransport.setResponse(statusCode: 200, body: statusJson());
-      httpTransport.setResponse(
-        statusCode: 200,
+      httpTransport.on(
+        'GET',
+        '/api/repos/bastion-ui/status',
+        status: 200,
+        body: statusJson(),
+      );
+      httpTransport.on(
+        'GET',
+        '/api/repos/bastion-ui/workflows',
+        status: 200,
         body: [
           {
             'spec_slug': '2.A-dashboard-repo-detail',
@@ -245,8 +219,18 @@ void main() {
     test(
       'a matching workflow_done event triggers a re-fetch that updates state',
       () async {
-        httpTransport.setResponse(statusCode: 200, body: statusJson());
-        httpTransport.setResponse(statusCode: 200, body: <dynamic>[]);
+        httpTransport.on(
+          'GET',
+          '/api/repos/bastion-ui/status',
+          status: 200,
+          body: statusJson(),
+        );
+        httpTransport.on(
+          'GET',
+          '/api/repos/bastion-ui/workflows',
+          status: 200,
+          body: <dynamic>[],
+        );
         container = ProviderContainer(
           overrides: [
             bastionSocketProvider.overrideWith((ref) => socket),
@@ -260,12 +244,16 @@ void main() {
           isEmpty,
         );
 
-        httpTransport.setResponse(
-          statusCode: 200,
+        httpTransport.on(
+          'GET',
+          '/api/repos/bastion-ui/status',
+          status: 200,
           body: statusJson()..['now'] = 'done',
         );
-        httpTransport.setResponse(
-          statusCode: 200,
+        httpTransport.on(
+          'GET',
+          '/api/repos/bastion-ui/workflows',
+          status: 200,
           body: [
             {
               'spec_slug': '2.A-dashboard-repo-detail',
@@ -290,9 +278,16 @@ void main() {
     test(
       'a status fetch failure does not blank a successful workflows fetch',
       () async {
-        httpTransport.setResponse(statusCode: 404, body: {'code': 'C002'});
-        httpTransport.setResponse(
-          statusCode: 200,
+        httpTransport.on(
+          'GET',
+          '/api/repos/bastion-ui/status',
+          status: 404,
+          body: {'code': 'C002'},
+        );
+        httpTransport.on(
+          'GET',
+          '/api/repos/bastion-ui/workflows',
+          status: 200,
           body: [
             {
               'spec_slug': '2.A-dashboard-repo-detail',
@@ -325,8 +320,18 @@ void main() {
     test(
       'a workflows fetch failure does not blank a successful status fetch',
       () async {
-        httpTransport.setResponse(statusCode: 200, body: statusJson());
-        httpTransport.setResponse(statusCode: 404, body: {'code': 'C001'});
+        httpTransport.on(
+          'GET',
+          '/api/repos/bastion-ui/status',
+          status: 200,
+          body: statusJson(),
+        );
+        httpTransport.on(
+          'GET',
+          '/api/repos/bastion-ui/workflows',
+          status: 404,
+          body: {'code': 'C001'},
+        );
         container = ProviderContainer(
           overrides: [
             bastionSocketProvider.overrideWith((ref) => socket),
@@ -347,9 +352,16 @@ void main() {
     test(
       'both legs failing preserves prior state and clears loading',
       () async {
-        httpTransport.setResponse(statusCode: 200, body: statusJson());
-        httpTransport.setResponse(
-          statusCode: 200,
+        httpTransport.on(
+          'GET',
+          '/api/repos/bastion-ui/status',
+          status: 200,
+          body: statusJson(),
+        );
+        httpTransport.on(
+          'GET',
+          '/api/repos/bastion-ui/workflows',
+          status: 200,
           body: [
             {
               'spec_slug': '2.A-dashboard-repo-detail',
@@ -375,8 +387,18 @@ void main() {
         expect(seeded.workflows, hasLength(1));
 
         // Both legs fail on the triggered re-fetch.
-        httpTransport.setResponse(statusCode: 404, body: {'code': 'C002'});
-        httpTransport.setResponse(statusCode: 404, body: {'code': 'C001'});
+        httpTransport.on(
+          'GET',
+          '/api/repos/bastion-ui/status',
+          status: 404,
+          body: {'code': 'C002'},
+        );
+        httpTransport.on(
+          'GET',
+          '/api/repos/bastion-ui/workflows',
+          status: 404,
+          body: {'code': 'C001'},
+        );
 
         transport.addMessage(workflowDoneEventJson('bastion-ui'));
         await pump();
@@ -390,8 +412,18 @@ void main() {
     );
 
     test('a workflow_done event for a different repo is ignored', () async {
-      httpTransport.setResponse(statusCode: 200, body: statusJson());
-      httpTransport.setResponse(statusCode: 200, body: <dynamic>[]);
+      httpTransport.on(
+        'GET',
+        '/api/repos/bastion-ui/status',
+        status: 200,
+        body: statusJson(),
+      );
+      httpTransport.on(
+        'GET',
+        '/api/repos/bastion-ui/workflows',
+        status: 200,
+        body: <dynamic>[],
+      );
       container = ProviderContainer(
         overrides: [
           bastionSocketProvider.overrideWith((ref) => socket),
@@ -402,12 +434,16 @@ void main() {
       await pump();
 
       // No further responses queued — if a re-fetch were (incorrectly)
-      // triggered, the FakeHttpTransport would throw for lack of a queued
-      // response, failing the test.
+      // triggered, the routing FakeHttpTransport would fail the test for an
+      // unmatched request past this route's registered response.
       transport.addMessage(workflowDoneEventJson('some-other-repo'));
       await pump();
 
-      expect(httpTransport.getCallCount, 2);
+      expect(
+        httpTransport.callCount('GET', '/api/repos/bastion-ui/status') +
+            httpTransport.callCount('GET', '/api/repos/bastion-ui/workflows'),
+        2,
+      );
     });
   });
 }

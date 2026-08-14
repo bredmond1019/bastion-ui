@@ -13,6 +13,8 @@ import 'package:bastion_ui/state/pane_provider.dart';
 import 'package:bastion_ui/state/sessions_provider.dart'
     show bastionApiProvider, bastionSocketProvider;
 
+import '../support/fake_http_transport.dart';
+
 // ---------------------------------------------------------------------------
 // Fakes (mirrors sessions_provider_test.dart / api_test.dart fixtures)
 // ---------------------------------------------------------------------------
@@ -49,41 +51,6 @@ class FakeWsTransport implements WsTransport {
     closed = true;
     if (!_controller.isClosed) await _controller.close();
   }
-}
-
-class FakeHttpTransport implements HttpTransport {
-  final List<({int statusCode, String body})> _responses = [];
-  int getCallCount = 0;
-
-  void setResponse({required int statusCode, required Object body}) {
-    final encoded = body is String ? body : jsonEncode(body);
-    _responses.add((statusCode: statusCode, body: encoded));
-  }
-
-  @override
-  Future<({int statusCode, String body})> get(
-    String url, {
-    Map<String, String> headers = const {},
-  }) async {
-    getCallCount++;
-    if (_responses.isEmpty) {
-      throw StateError('FakeHttpTransport: no response queued for GET $url');
-    }
-    return _responses.removeAt(0);
-  }
-
-  @override
-  Future<({int statusCode, String body})> post(
-    String url, {
-    Map<String, String> headers = const {},
-    String? body,
-  }) => throw UnimplementedError('not exercised by this test');
-
-  @override
-  Future<({int statusCode, String body})> delete(
-    String url, {
-    Map<String, String> headers = const {},
-  }) => throw UnimplementedError('not exercised by this test');
 }
 
 /// Pump the microtask/timer queue so async work (handshake, seed fetch,
@@ -164,8 +131,10 @@ void main() {
     });
 
     test('subscribes to "pane:<name>" on first watch', () async {
-      httpTransport.setResponse(
-        statusCode: 200,
+      httpTransport.on(
+        'GET',
+        '/api/sessions/alpha/pane',
+        status: 200,
         body: {'session_name': 'alpha', 'lines': <String>[]},
       );
 
@@ -178,8 +147,10 @@ void main() {
     });
 
     test('seeds the buffer from REST getPane() before any WS frame', () async {
-      httpTransport.setResponse(
-        statusCode: 200,
+      httpTransport.on(
+        'GET',
+        '/api/sessions/alpha/pane',
+        status: 200,
         body: {
           'session_name': 'alpha',
           'lines': [r'$ ls', 'foo.txt'],
@@ -193,8 +164,10 @@ void main() {
     });
 
     test('applies a WS "pane" frame over the REST seed', () async {
-      httpTransport.setResponse(
-        statusCode: 200,
+      httpTransport.on(
+        'GET',
+        '/api/sessions/alpha/pane',
+        status: 200,
         body: {
           'session_name': 'alpha',
           'lines': ['stale'],
@@ -221,8 +194,10 @@ void main() {
     });
 
     test('drops an out-of-order/duplicate frame (seq <= last seq)', () async {
-      httpTransport.setResponse(
-        statusCode: 200,
+      httpTransport.on(
+        'GET',
+        '/api/sessions/alpha/pane',
+        status: 200,
         body: {'session_name': 'alpha', 'lines': <String>[]},
       );
 
@@ -270,8 +245,10 @@ void main() {
     });
 
     test('ignores "pane" frames for a different session', () async {
-      httpTransport.setResponse(
-        statusCode: 200,
+      httpTransport.on(
+        'GET',
+        '/api/sessions/alpha/pane',
+        status: 200,
         body: {'session_name': 'alpha', 'lines': <String>[]},
       );
 
@@ -346,8 +323,10 @@ void main() {
     test(
       'sends "unsubscribe" for "pane:<name>" when the last watcher disposes',
       () async {
-        httpTransport.setResponse(
-          statusCode: 200,
+        httpTransport.on(
+          'GET',
+          '/api/sessions/alpha/pane',
+          status: 200,
           body: {'session_name': 'alpha', 'lines': <String>[]},
         );
         final localContainer = ProviderContainer(
@@ -380,8 +359,10 @@ void main() {
         backoffSchedule: (_) => Duration.zero,
       );
 
-      httpTransport.setResponse(
-        statusCode: 200,
+      httpTransport.on(
+        'GET',
+        '/api/sessions/alpha/pane',
+        status: 200,
         body: {
           'session_name': 'alpha',
           'lines': ['first-seed'],
@@ -395,13 +376,15 @@ void main() {
       );
       localContainer.listen(paneProvider('alpha'), (_, _) {});
       await pump();
-      expect(httpTransport.getCallCount, 1);
+      expect(httpTransport.callCount('GET', '/api/sessions/alpha/pane'), 1);
 
       // Drop → the socket reconnects (zero backoff) → the notifier's
       // status-stream listener sees the transition into `connected` again
       // and re-runs `_seed()`.
-      httpTransport.setResponse(
-        statusCode: 200,
+      httpTransport.on(
+        'GET',
+        '/api/sessions/alpha/pane',
+        status: 200,
         body: {
           'session_name': 'alpha',
           'lines': ['reseeded'],
@@ -417,7 +400,7 @@ void main() {
       reconnectTransports[1].completeReady();
       await pump();
 
-      expect(httpTransport.getCallCount, 2);
+      expect(httpTransport.callCount('GET', '/api/sessions/alpha/pane'), 2);
       expect(localContainer.read(paneProvider('alpha')), ['reseeded']);
 
       localContainer.dispose();
