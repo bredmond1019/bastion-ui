@@ -136,7 +136,7 @@ void main() {
       expect(t.calls.single.url, isNot(contains('graph')));
     });
 
-    test('graph: true emits ?graph=1', () async {
+    test('graph: true emits ?graph=true', () async {
       final t = FakeHttpTransport();
       t.setResponse(
         statusCode: 200,
@@ -148,7 +148,7 @@ void main() {
 
       expect(
         t.calls.single.url,
-        'http://127.0.0.1:4317/api/board?scope=hq&graph=1',
+        'http://127.0.0.1:4317/api/board?scope=hq&graph=true',
       );
     });
 

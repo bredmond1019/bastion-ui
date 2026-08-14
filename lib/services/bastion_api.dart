@@ -476,9 +476,15 @@ final class BastionApi {
   /// given scope (serve-api.md §13).
   ///
   /// Only the parameters actually supplied are emitted as query params.
-  /// [graph] defaults to `false`; passing `true` emits `?graph=1`, which
+  /// [graph] defaults to `false`; passing `true` emits `?graph=true`, which
   /// roughly doubles this endpoint's wall-clock on the live HQ corpus — it
   /// must never be enabled by default.
+  ///
+  /// serve-api.md §13.1 documents `?graph=1` as an accepted alternate
+  /// spelling, but the real server's query deserializer (BU.11.A Task 6
+  /// e2e run against `bastion` main, 2026-08-14) only accepts the strict
+  /// boolean strings `"true"`/`"false"` and returns `400` for `"1"` — see
+  /// this spec's Amendment Log.
   ///
   /// Throws [FatalAuthError] on `401`, [ApiError] on other HTTP errors, or a
   /// [SocketException] / [HttpException] on network failure.
@@ -494,7 +500,7 @@ final class BastionApi {
       'tier': ?tier,
       'repo': ?repo,
       'epic': ?epic,
-      if (graph) 'graph': '1',
+      if (graph) 'graph': 'true',
     };
     final url = _withQuery('$_baseUrl/api/board', params);
     final result = await _transport.get(url, headers: _defaultHeaders);
