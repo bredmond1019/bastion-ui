@@ -12,3 +12,4 @@ export 'gradient_top_bar.dart';
 export 'heading_rule.dart';
 export 'icon_tile.dart';
 export 'panel_card.dart';
+export 'status_pill.dart';
