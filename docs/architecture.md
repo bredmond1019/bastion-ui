@@ -138,20 +138,37 @@ re-seed can never clobber newer WS-delivered state.
   `PaneFrame`, `EventFrame`, `UnknownFrame` (unrecognised `kind`, forward-compatible),
   or `MalformedFrame` (decode failure). Never throws.
 - `RepoSummaryDto` / `RepoStatusDto` / `HandoffInfo` / `WorkflowStateDto`
-  (`models/repo_status_dto.dart`) — mirror serve-api.md v0.3 §11's repo/workflow REST
-  surface. `WorkflowStateDto.currentTask` is a JSON integer (verified directly against
-  serve-api.md rather than trusting the task spec's prose summary, which implied a
-  string).
+  (`models/repo_status_dto.dart`) — mirror serve-api.md's repo/workflow REST surface
+  (block BU.11.A pinned this at v0.30; see `lib/services/serve_api_version.dart` for
+  the current machine-checked value). `WorkflowStateDto.currentTask` is a JSON integer
+  (verified directly against serve-api.md rather than trusting the task spec's prose
+  summary, which implied a string).
 - `RepoWorkflowsState` (`state/workflows_provider.dart`) — `{status, workflows,
   loading}` snapshot for one repo, held by `RepoWorkflowsNotifier`.
 - `RepoBadgeState` (`widgets/status_badge.dart`) — `idle` / `inFlight` / `hasHandoff`,
   in that priority order (in-flight outranks a pending handoff).
 - `CommandRequest` / `CommandResponse` (`models/action_dto.dart`) — mirror
-  `POST /api/actions/command` (serve-api.md v0.4 §12.1). `CommandRequest.toJson()`
-  omits `dir`/`model` when null and emits `session` only for `CommandMode.inject`,
+  `POST /api/actions/command` (serve-api.md §12.1, pinned v0.30 — see
+  `lib/services/serve_api_version.dart`). `CommandRequest.toJson()` omits
+  `dir`/`model` when null and emits `session` only for `CommandMode.inject`,
   `name` only for `CommandMode.spawn`.
+- `BoardDto` / `BoardLaneDto` / `BoardBlockDto` (`models/board_dto.dart`),
+  `AttentionDto` / `AttentionLanesDto` / `AttentionCarryoverDto` /
+  `AttentionBacklogDto` / `AttentionThresholdsDto` (`models/attention_dto.dart`), and
+  `DocTreeDto` / `DocEntryDto` / `DocFileDto` (`models/docs_dto.dart`) — mirror
+  serve-api.md v0.30 §13, §15, §16 (block BU.11.A). Every optional wire field decodes
+  to a nullable Dart field with a safe default; `BoardBlockDto`'s three graph-gated
+  fields (`dependentCount`, `ready`, `unmetCount`) are `null` (never a fabricated
+  zero) unless the request passed `?graph=true`.
 - `PaletteCommand` (`state/commands_provider.dart`) — local `{label, command}` value
   object for the user-editable palette; not part of the serve-api contract.
+
+**Version pin.** `lib/services/serve_api_version.dart` exports `kServeApiPin`, the
+exact serve-api contract revision the model layer above was written against.
+`test/services/serve_api_version_test.dart` drift-tests it against a sibling
+`../bastion` checkout when present, and skips (never fails) when that checkout is
+absent — the pin is the app's only machine-checked contract-version marker; every
+prior version reference here was prose that nothing checked.
 
 ## Dashboard + repo-detail flow (BU.2.A)
 
