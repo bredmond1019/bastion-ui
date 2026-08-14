@@ -13,6 +13,8 @@ library;
 import 'package:flutter/material.dart';
 
 import '../models/session_dto.dart';
+import '../theme/status_tones.dart';
+import '../theme/tokens.dart';
 
 /// A running/idle summary card for one [SessionDto].
 class SessionCard extends StatelessWidget {
@@ -73,13 +75,14 @@ class _StateBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final tones = context.statusTones;
     return Tooltip(
       message: isRunning ? 'Running' : 'Idle',
       child: CircleAvatar(
         radius: 6,
         backgroundColor: isRunning
-            ? const Color(0xFF388E3C) // green 700
-            : const Color(0xFF9E9E9E), // grey 500
+            ? tones.active.foreground
+            : tones.neutral.foreground,
       ),
     );
   }
@@ -112,16 +115,16 @@ class _AgentStateChip extends StatelessWidget {
     }
   }
 
-  Color get _color {
+  StatusTone _tone(StatusTones tones) {
     switch (agentState) {
       case AgentState.working:
-        return const Color(0xFF1976D2); // blue 700
+        return tones.info;
       case AgentState.idle:
-        return const Color(0xFF757575); // grey 600
+        return tones.neutral;
       case AgentState.blocked:
-        return const Color(0xFFD32F2F); // red 700
+        return tones.danger;
       case AgentState.unknown:
-        return const Color(0xFF757575); // grey 600
+        return tones.neutral;
     }
   }
 
@@ -129,21 +132,23 @@ class _AgentStateChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final tone = _tone(context.statusTones);
+    final color = tone.foreground;
     return Tooltip(
       message: 'Agent $_label',
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
         decoration: BoxDecoration(
-          color: _emphasized ? _color : _color.withValues(alpha: 0.12),
+          color: _emphasized ? color : tone.background,
           borderRadius: BorderRadius.circular(4),
-          border: _emphasized ? null : Border.all(color: _color, width: 1),
+          border: _emphasized ? null : Border.all(color: tone.border, width: 1),
         ),
         child: Text(
           _label,
           style: TextStyle(
             fontSize: 11,
             fontWeight: _emphasized ? FontWeight.bold : FontWeight.w500,
-            color: _emphasized ? const Color(0xFFFFFFFF) : _color,
+            color: _emphasized ? AppTokens.paper : color,
           ),
         ),
       ),
@@ -157,9 +162,12 @@ class _NeedsInputBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const Tooltip(
+    return Tooltip(
       message: 'Needs input',
-      child: Icon(Icons.notifications_active, color: Color(0xFFE65100)),
+      child: Icon(
+        Icons.notifications_active,
+        color: context.statusTones.warning.foreground,
+      ),
     );
   }
 }

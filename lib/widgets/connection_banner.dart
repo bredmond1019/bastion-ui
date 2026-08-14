@@ -13,6 +13,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../screens/settings_screen.dart';
 import '../state/connection_provider.dart';
+import '../theme/status_tones.dart';
+import '../theme/tokens.dart';
 
 /// A slim coloured banner that reflects the live [ConnectionStatus].
 ///
@@ -42,10 +44,17 @@ class _BannerStrip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final appearance = _appearance(status);
+    final tones = context.statusTones;
+    final appearance = _appearance(status, tones);
+    // The banner is a solid full-bleed strip (unlike a StatusTone chip's
+    // low-alpha fill), so it uses the tone's foreground hue as a saturated
+    // background with AppTokens.paper text/icons for contrast — the same
+    // "onPrimary" pattern AppTheme.dark uses for its ColorScheme.
+    final background = appearance.tone.foreground;
+    final foreground = AppTokens.paper;
 
     return Material(
-      color: appearance.color,
+      color: background,
       child: InkWell(
         onTap: () {
           Navigator.of(context).push(
@@ -59,7 +68,7 @@ class _BannerStrip extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
             child: Row(
               children: [
-                Icon(appearance.icon, color: Colors.white, size: 16),
+                Icon(appearance.icon, color: foreground, size: 16),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Column(
@@ -68,8 +77,8 @@ class _BannerStrip extends StatelessWidget {
                     children: [
                       Text(
                         appearance.label,
-                        style: const TextStyle(
-                          color: Colors.white,
+                        style: TextStyle(
+                          color: foreground,
                           fontSize: 13,
                           fontWeight: FontWeight.w500,
                           decoration: TextDecoration.none,
@@ -78,8 +87,8 @@ class _BannerStrip extends StatelessWidget {
                       if (appearance.subtitle != null)
                         Text(
                           appearance.subtitle!,
-                          style: const TextStyle(
-                            color: Colors.white,
+                          style: TextStyle(
+                            color: foreground,
                             fontSize: 11,
                             decoration: TextDecoration.none,
                           ),
@@ -88,11 +97,7 @@ class _BannerStrip extends StatelessWidget {
                   ),
                 ),
                 if (appearance.showAction)
-                  const Icon(
-                    Icons.chevron_right,
-                    color: Colors.white,
-                    size: 18,
-                  ),
+                  Icon(Icons.chevron_right, color: foreground, size: 18),
               ],
             ),
           ),
@@ -101,34 +106,39 @@ class _BannerStrip extends StatelessWidget {
     );
   }
 
-  /// Maps a [ConnectionStatus] to its full visual + copy appearance.
-  static _BannerAppearance _appearance(ConnectionStatus status) {
+  /// Maps a [ConnectionStatus] to its full visual + copy appearance, reading
+  /// its colour triplet from [tones] (the ambient [StatusTones]) rather than
+  /// a hardcoded literal.
+  static _BannerAppearance _appearance(
+    ConnectionStatus status,
+    StatusTones tones,
+  ) {
     return switch (status) {
-      ConnectionStatus.connected => const _BannerAppearance(
+      ConnectionStatus.connected => _BannerAppearance(
         label: 'Connected',
         subtitle: null,
-        color: Color(0xFF388E3C), // green 700
+        tone: tones.active,
         icon: Icons.wifi,
         showAction: false,
       ),
-      ConnectionStatus.connecting => const _BannerAppearance(
+      ConnectionStatus.connecting => _BannerAppearance(
         label: 'Connecting…',
         subtitle: null,
-        color: Color(0xFFF57C00), // orange 700
+        tone: tones.warning,
         icon: Icons.wifi_find,
         showAction: false,
       ),
-      ConnectionStatus.reconnecting => const _BannerAppearance(
+      ConnectionStatus.reconnecting => _BannerAppearance(
         label: 'Reconnecting…',
         subtitle: 'Trying to restore the link to bastion serve',
-        color: Color(0xFFE65100), // deep orange 900
+        tone: tones.warning,
         icon: Icons.wifi_tethering,
         showAction: false,
       ),
-      ConnectionStatus.disconnected => const _BannerAppearance(
+      ConnectionStatus.disconnected => _BannerAppearance(
         label: 'Disconnected',
         subtitle: 'Tap to check your server settings',
-        color: Color(0xFFC62828), // red 800
+        tone: tones.danger,
         icon: Icons.wifi_off,
         showAction: true,
       ),
@@ -137,20 +147,20 @@ class _BannerStrip extends StatelessWidget {
 }
 
 /// Full visual appearance for a given [ConnectionStatus]: label, optional
-/// subtitle copy, background colour, leading icon, and whether the
+/// subtitle copy, [StatusTone] triplet, leading icon, and whether the
 /// trailing settings affordance icon is shown.
 class _BannerAppearance {
   const _BannerAppearance({
     required this.label,
     required this.subtitle,
-    required this.color,
+    required this.tone,
     required this.icon,
     required this.showAction,
   });
 
   final String label;
   final String? subtitle;
-  final Color color;
+  final StatusTone tone;
   final IconData icon;
   final bool showAction;
 }

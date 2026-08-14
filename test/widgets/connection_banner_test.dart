@@ -12,6 +12,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:bastion_ui/screens/settings_screen.dart';
 import 'package:bastion_ui/state/connection_provider.dart';
+import 'package:bastion_ui/theme/status_tones.dart';
 import 'package:bastion_ui/widgets/connection_banner.dart';
 
 // ---------------------------------------------------------------------------
@@ -139,6 +140,34 @@ void main() {
         expect(find.byType(SettingsScreen), findsOneWidget);
       },
     );
+
+    testWidgets('each status resolves its colour from the ambient StatusTones '
+        'extension, not a literal hex value', (tester) async {
+      final tones = StatusTones.dark;
+      final expected = {
+        ConnectionStatus.connected: tones.active,
+        ConnectionStatus.connecting: tones.warning,
+        ConnectionStatus.reconnecting: tones.warning,
+        ConnectionStatus.disconnected: tones.danger,
+      };
+
+      for (final entry in expected.entries) {
+        // Remount cleanly each iteration: pumping a new ProviderScope
+        // override in place can otherwise leave the previous provider
+        // state alive across pumps.
+        await tester.pumpWidget(const SizedBox.shrink());
+        await tester.pumpWidget(_buildBanner(entry.key));
+        final material = tester.widget<Material>(
+          find
+              .descendant(
+                of: find.byType(ConnectionBanner),
+                matching: find.byType(Material),
+              )
+              .first,
+        );
+        expect(material.color, entry.value.foreground);
+      }
+    });
 
     testWidgets('banner updates when provider state changes', (tester) async {
       // Start in disconnected state.

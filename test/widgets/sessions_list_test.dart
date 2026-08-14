@@ -18,6 +18,7 @@ import 'package:bastion_ui/services/bastion_api.dart';
 import 'package:bastion_ui/services/bastion_socket.dart';
 import 'package:bastion_ui/state/events_provider.dart';
 import 'package:bastion_ui/state/sessions_provider.dart';
+import 'package:bastion_ui/theme/status_tones.dart';
 import 'package:bastion_ui/widgets/session_card.dart';
 
 // ---------------------------------------------------------------------------
@@ -142,6 +143,15 @@ void main() {
       expect(find.text('alpha'), findsOneWidget);
       expect(find.text('beta'), findsOneWidget);
       expect(find.byIcon(Icons.notifications_active), findsNothing);
+
+      // Running/idle dots resolve their colour from StatusTones, not a
+      // literal hex value (BU.10.A task 6).
+      final tones = StatusTones.dark;
+      final avatars = tester
+          .widgetList<CircleAvatar>(find.byType(CircleAvatar))
+          .toList();
+      expect(avatars[0].backgroundColor, tones.active.foreground);
+      expect(avatars[1].backgroundColor, tones.neutral.foreground);
     });
 
     testWidgets('shows empty state when there are no sessions', (tester) async {
@@ -168,6 +178,8 @@ void main() {
       await tester.pump();
 
       expect(find.byIcon(Icons.notifications_active), findsOneWidget);
+      final icon = tester.widget<Icon>(find.byIcon(Icons.notifications_active));
+      expect(icon.color, StatusTones.dark.warning.foreground);
     });
 
     testWidgets('needs-input flag clears when the event stream updates', (

@@ -10,6 +10,8 @@ library;
 
 import 'package:flutter/material.dart';
 
+import '../theme/status_tones.dart';
+
 /// The dashboard repo-row status a [StatusBadge] represents.
 enum RepoBadgeState {
   /// No in-flight workflow and no pending handoff.
@@ -31,26 +33,24 @@ class StatusBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final tones = context.statusTones;
     switch (state) {
       case RepoBadgeState.inFlight:
-        return const Tooltip(
+        return Tooltip(
           message: 'Workflow in flight',
-          child: Icon(Icons.autorenew, color: Color(0xFF1976D2)), // blue 700
+          child: Icon(Icons.autorenew, color: tones.info.foreground),
         );
       case RepoBadgeState.hasHandoff:
-        return const Tooltip(
+        return Tooltip(
           message: 'Handoff pending',
-          child: Icon(
-            Icons.assignment_late,
-            color: Color(0xFFE65100), // orange 900
-          ),
+          child: Icon(Icons.assignment_late, color: tones.warning.foreground),
         );
       case RepoBadgeState.idle:
-        return const Tooltip(
+        return Tooltip(
           message: 'Idle',
           child: CircleAvatar(
             radius: 6,
-            backgroundColor: Color(0xFF9E9E9E), // grey 500
+            backgroundColor: tones.neutral.foreground,
           ),
         );
     }
