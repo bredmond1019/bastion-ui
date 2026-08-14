@@ -3,7 +3,7 @@
 // Task 2 scope: the tablet split-view case, where Flutter reuses the same
 // State object across a session switch (`didUpdateWidget` fires, not
 // `initState`). Task 3 adds the pushed-route / scoping / no-op / exception
-// coverage alongside this file.
+// coverage below.
 
 import 'dart:async';
 import 'dart:convert';
@@ -202,6 +202,115 @@ void main() {
             'not run again for a reused State object.',
       );
       expect(tester.takeException(), isNull);
+    });
+  });
+
+  group('SessionDetailScreen needs_input clearing (pushed route / phone)', () {
+    late BastionSocket socket;
+    late FakeWsTransport wsTransport;
+    late FakeHttpTransport httpTransport;
+    late BastionApi api;
+    late ProviderContainer container;
+
+    setUp(() {
+      httpTransport = FakeHttpTransport();
+      api = BastionApi(
+        host: 'test-host',
+        port: 4317,
+        token: 'test-token',
+        transport: httpTransport,
+      );
+    });
+
+    tearDown(() async {
+      container.dispose();
+      await socket.dispose();
+    });
+
+    Future<void> mountFor(
+      WidgetTester tester, {
+      required Set<String> flag,
+    }) async {
+      final (s, t) = await makeConnectedSocket(tester);
+      socket = s;
+      wsTransport = t;
+      container = ProviderContainer(
+        overrides: [
+          bastionSocketProvider.overrideWith((ref) => socket),
+          bastionApiProvider.overrideWith((ref) => api),
+        ],
+      );
+      container.read(needsInputProvider);
+      for (final session in flag) {
+        wsTransport.addMessage(eventFrameJson(session, 'needs_input'));
+      }
+      await pump(tester);
+    }
+
+    testWidgets('opening a flagged session via the pushed route clears only '
+        'that session', (tester) async {
+      await mountFor(tester, flag: {'alpha', 'gamma'});
+      expect(container.read(needsInputProvider), {'alpha', 'gamma'});
+
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: const MaterialApp(
+            home: SessionDetailScreen(sessionName: 'alpha'),
+          ),
+        ),
+      );
+      await pump(tester);
+
+      expect(
+        container.read(needsInputProvider),
+        {'gamma'},
+        reason:
+            'clearing must be scoped to the opened session only — gamma '
+            'keeps its flag.',
+      );
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('opening a never-flagged session is a no-op and does not '
+        'throw', (tester) async {
+      await mountFor(tester, flag: {'beta'});
+      expect(container.read(needsInputProvider), {'beta'});
+
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: const MaterialApp(
+            home: SessionDetailScreen(sessionName: 'never-flagged'),
+          ),
+        ),
+      );
+      await pump(tester);
+
+      expect(
+        container.read(needsInputProvider),
+        {'beta'},
+        reason: 'a session that was never flagged clears nothing else.',
+      );
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('no riverpod modify-during-build exception is raised when '
+        'the screen opens with a flagged session', (tester) async {
+      await mountFor(tester, flag: {'alpha'});
+
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: const MaterialApp(
+            home: SessionDetailScreen(sessionName: 'alpha'),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(tester.takeException(), isNull);
+      expect(container.read(needsInputProvider), isEmpty);
     });
   });
 }
