@@ -2,7 +2,7 @@
 type: Log
 title: BastionUI Development Log
 description: Chronological log of work completed for BastionUI.
-timestamp: "2026-07-23T23:20:40Z"
+timestamp: "2026-08-14T09:18:03Z"
 ---
 
 # Log — BastionUI
@@ -10,6 +10,28 @@ timestamp: "2026-07-23T23:20:40Z"
 *Append-only working log. One dated entry per session. Newest entries at the top.*
 
 ---
+
+## [2026-08-14]
+
+### Patrol installed + first visual-smoke baseline captured
+
+- **What:** Installed Patrol (`patrol_cli` 4.7.0 + `patrol` 4.9.0 packages) and got a real smoke
+  test running on an Android emulator (`Pixel_9`) against a live `bastion serve` — no mocks, real
+  tmux sessions, real repo registry. Added the required Android wiring
+  (`android/app/build.gradle.kts` instrumentation runner/orchestrator/desugaring,
+  `android/app/src/androidTest/java/com/bastionui/bastion_ui/MainActivityTest.java`). Wrote
+  `patrol_test/smoke_test.dart` — connects via Settings, asserts Sessions/Dashboard render real
+  backend data, opens a session and a repo, opens the Quick Actions add-command dialog; 12/12
+  steps pass. Since Patrol 4.x's binding has no screenshot API, built a separate
+  `adb exec-out screencap`-driven visual tour and a new `visual_smoke/` convention for keeping
+  those screenshots as a durable, deliberate, disk-only record — timestamped run folders,
+  `manifest.md` tracked in git, PNGs git-ignored so routine test runs never pile them up.
+  `visual_smoke/runs/2026-08-14_061003/` is the first baseline (10 screens).
+- **Why:** User wants agent-driven visual/functional testing of the Flutter app (the mobile
+  equivalent of Playwright for web), plus a way to compare UI state across runs over time without
+  every routine `/sdlc-task`/`/sdlc-flow` pass silently accumulating screenshots.
+- **Refs:** `patrol_test/smoke_test.dart`, `visual_smoke/README.md`; ad-hoc session, no
+  `planning/<concept>/` spec dir or `state.json` block (same precedent as `BU.9.x`, 2026-07-19).
 
 ## [2026-07-23]
 
