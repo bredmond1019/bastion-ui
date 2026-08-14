@@ -44,12 +44,31 @@ class _SessionDetailScreenState extends ConsumerState<SessionDetailScreen> {
     _clearNeedsInput(widget.sessionName);
   }
 
+  @override
+  void didUpdateWidget(covariant SessionDetailScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Embedded (tablet split-view) mode reuses this State object when the
+    // operator taps a different session in the list — `initState` does not
+    // run again, so the newly-selected session's badge must be cleared here.
+    if (oldWidget.sessionName != widget.sessionName) {
+      _clearNeedsInput(widget.sessionName);
+    }
+  }
+
   /// Drop the `needs_input` badge for [session] — the operator opening this
-  /// screen counts as having viewed/acted on the prompt. Called outside
-  /// `build` (from `initState`/`didUpdateWidget`) since mutating a
-  /// [StateNotifier] during build raises a modify-during-build error.
+  /// screen counts as having viewed/acted on the prompt. Called from
+  /// `initState`/`didUpdateWidget`, both of which run while Flutter's
+  /// `BuildOwner` is mid-build for the whole tree being mounted/updated —
+  /// mutating a [StateNotifier] at that point raises riverpod's
+  /// modify-during-build error even though this widget's own `build` isn't
+  /// the caller. Defer to the next frame via `addPostFrameCallback`, guarded
+  /// by `mounted` since the frame callback can fire after this State is
+  /// disposed (e.g. a fast session switch away before the frame lands).
   void _clearNeedsInput(String session) {
-    ref.read(needsInputProvider.notifier).clear(session);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      ref.read(needsInputProvider.notifier).clear(session);
+    });
   }
 
   @override
