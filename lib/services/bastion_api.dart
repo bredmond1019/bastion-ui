@@ -13,6 +13,9 @@ import 'dart:convert';
 import 'dart:io';
 
 import '../models/action_dto.dart';
+import '../models/attention_dto.dart';
+import '../models/board_dto.dart';
+import '../models/docs_dto.dart';
 import '../models/dto.dart';
 import '../models/repo_status_dto.dart';
 import '../models/session_dto.dart';
@@ -459,6 +462,98 @@ final class BastionApi {
       CommandResponse.fromJson,
     );
     return response.session;
+  }
+
+  // -------------------------------------------------------------------------
+  // Board / Attention / Docs read surfaces (v0.30) — serve-api.md §13, §15, §16
+  // -------------------------------------------------------------------------
+  //
+  // All four routes below are on the CONSOLE surface: `/api` prefix,
+  // `Authorization: Bearer` header — never confuse with the engine mount
+  // (no `/api` prefix, `X-API-Key` header), which is BU.12.A.
+
+  /// `GET /api/board` — the now/next/blocked/deferred/finished lanes for the
+  /// given scope (serve-api.md §13).
+  ///
+  /// Only the parameters actually supplied are emitted as query params.
+  /// [graph] defaults to `false`; passing `true` emits `?graph=1`, which
+  /// roughly doubles this endpoint's wall-clock on the live HQ corpus — it
+  /// must never be enabled by default.
+  ///
+  /// Throws [FatalAuthError] on `401`, [ApiError] on other HTTP errors, or a
+  /// [SocketException] / [HttpException] on network failure.
+  Future<BoardDto> getBoard({
+    String? scope,
+    String? tier,
+    String? repo,
+    String? epic,
+    bool graph = false,
+  }) async {
+    final params = <String, String>{
+      'scope': ?scope,
+      'tier': ?tier,
+      'repo': ?repo,
+      'epic': ?epic,
+      if (graph) 'graph': '1',
+    };
+    final url = _withQuery('$_baseUrl/api/board', params);
+    final result = await _transport.get(url, headers: _defaultHeaders);
+    return _decode(result.statusCode, result.body, BoardDto.fromJson);
+  }
+
+  /// `GET /api/attention` — the stale-carryover, aging-backlog and
+  /// orphaned-captures lanes for the given scope (serve-api.md §15).
+  ///
+  /// Throws [FatalAuthError] on `401`, [ApiError] on other HTTP errors, or a
+  /// [SocketException] / [HttpException] on network failure.
+  Future<AttentionDto> getAttention({String? scope, String? tier}) async {
+    final params = <String, String>{'scope': ?scope, 'tier': ?tier};
+    final url = _withQuery('$_baseUrl/api/attention', params);
+    final result = await _transport.get(url, headers: _defaultHeaders);
+    return _decode(result.statusCode, result.body, AttentionDto.fromJson);
+  }
+
+  /// `GET /api/docs/{repo}/tree` — the allowlisted markdown tree for
+  /// [repo], optionally rooted at [path] (serve-api.md §16.1).
+  ///
+  /// Throws [FatalAuthError] on `401`, [ApiError] on other HTTP errors
+  /// (including a rejected traversal path per §16.2), or a
+  /// [SocketException] / [HttpException] on network failure.
+  Future<DocTreeDto> getDocsTree(String repo, {String? path}) async {
+    final encodedRepo = Uri.encodeComponent(repo);
+    final params = <String, String>{'path': ?path};
+    final url = _withQuery('$_baseUrl/api/docs/$encodedRepo/tree', params);
+    final result = await _transport.get(url, headers: _defaultHeaders);
+    return _decode(result.statusCode, result.body, DocTreeDto.fromJson);
+  }
+
+  /// `GET /api/docs/{repo}/file` — the raw markdown content of [path]
+  /// within [repo] (serve-api.md §16.2).
+  ///
+  /// The server owns path-traversal rejection; this client sends [path]
+  /// as-is and surfaces any rejection as [ApiError].
+  ///
+  /// Throws [FatalAuthError] on `401`, [ApiError] on other HTTP errors, or a
+  /// [SocketException] / [HttpException] on network failure.
+  Future<DocFileDto> getDocsFile(String repo, {required String path}) async {
+    final encodedRepo = Uri.encodeComponent(repo);
+    final params = <String, String>{'path': path};
+    final url = _withQuery('$_baseUrl/api/docs/$encodedRepo/file', params);
+    final result = await _transport.get(url, headers: _defaultHeaders);
+    return _decode(result.statusCode, result.body, DocFileDto.fromJson);
+  }
+
+  /// Append [params] to [base] as a URL-encoded query string; returns
+  /// [base] unchanged when [params] is empty.
+  static String _withQuery(String base, Map<String, String> params) {
+    if (params.isEmpty) return base;
+    final query = params.entries
+        .map(
+          (e) =>
+              '${Uri.encodeQueryComponent(e.key)}=${Uri.encodeQueryComponent(e.value)}',
+        )
+        .join('&');
+    return '$base?$query';
   }
 
   // -------------------------------------------------------------------------
