@@ -2,12 +2,44 @@
 type: Log
 title: BastionUI Development Log
 description: Chronological log of work completed for BastionUI.
-timestamp: "2026-08-14T10:57:29Z"
+timestamp: "2026-08-14T11:52:00Z"
 ---
 
 # Log — BastionUI
 
 *Append-only working log. One dated entry per session. Newest entries at the top.*
+
+---
+
+## [2026-08-14] (3)
+
+### Phases 10–12 registered — brand + operator surfaces roadmap, Wave 0 and 5 specs
+
+- **What:** A four-way audit (this app · `bastion serve` · `bastion-web` · the bastiel/cockpit
+  brand) measured two gaps: the app targets serve-api **v0.5** against a **v0.30** server and calls
+  **12 of 26** routes, and it carries no brand at all (`lib/theme/app_theme.dart` was 28 lines of
+  `ColorScheme.fromSeed(Colors.blueGrey)` on `ThemeMode.system`, rendering stock Material *light*).
+  Authored **Phase 10** (brand system: tokens → primitives → re-skin), **Phase 11** (operator read
+  surfaces: v0.30 contract layer → briefing+attention → docs reader) and **Phase 12** (engine
+  control: client+`X-API-Key` → runs → live `runs` WS topic → pause/resume/abort → launch) as 11
+  block sections in `master-plan.md`, and registered 11 blocks + 2 tickets in `state.json`. Retired
+  `BU.5.A` to `wontfix` (Phase 12 decomposes it) and **dropped the deferred serve-api v1.0.0 pin**
+  that had blocked `BU.5.A`/`BU.6.A` since 2026-07-23. Created roadmap
+  `bastion-ui-brand-and-surfaces` at HQ (roadmap.md + lane-bastion-ui.txt + lane-log.jsonl +
+  context.md), with two operator gates modelled as typed `depends_on` edges. Then wrote the five
+  specs whose decomposition does not depend on a predecessor's concrete output:
+  `ticket-session-agent-state`, `ticket-dashboard-now-render`, `ticket-needs-input-badge-clear`,
+  `10.A-design-tokens-theme`, `11.A-serve-api-v030-contract-layer` (23 tasks total).
+- **Why:** The app had drifted 25 contract versions behind the server while waiting on a v1.0.0
+  freeze that was never going to arrive — nine contract amendments landed in August alone. And every
+  screen added before the brand lands is a screen that has to be retreaded afterwards, so the
+  operator chose brand first. The audit also surfaced two real bugs worth ticketing: the Dashboard
+  renders a literal `[]` on every repo card, and `NeedsInputNotifier.clear()` is implemented, tested,
+  and called from nowhere — so the needs-input badge never clears.
+- **Refs:** commits `3559d4e1` (Wave 0), `49049f54` (specs + context);
+  `planning/roadmaps/bastion-ui-brand-and-surfaces/` at HQ; `planning/handoff.md`. The other nine
+  specs are deliberately ungenerated — they need real token names, constructors and DTO fields to
+  spec without inventing them (context.md §9).
 
 ---
 
