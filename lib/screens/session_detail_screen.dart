@@ -9,13 +9,14 @@ library;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../state/events_provider.dart' show needsInputProvider;
 import '../state/pane_provider.dart';
 import '../state/sessions_provider.dart' show bastionApiProvider;
 import '../widgets/approve_button_row.dart';
 import '../widgets/pane_view.dart';
 
 /// Live pane + quick-approve view for a single session.
-class SessionDetailScreen extends ConsumerWidget {
+class SessionDetailScreen extends ConsumerStatefulWidget {
   const SessionDetailScreen({
     super.key,
     required this.sessionName,
@@ -32,22 +33,42 @@ class SessionDetailScreen extends ConsumerWidget {
   final bool embedded;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final lines = ref.watch(paneProvider(sessionName));
+  ConsumerState<SessionDetailScreen> createState() =>
+      _SessionDetailScreenState();
+}
+
+class _SessionDetailScreenState extends ConsumerState<SessionDetailScreen> {
+  @override
+  void initState() {
+    super.initState();
+    _clearNeedsInput(widget.sessionName);
+  }
+
+  /// Drop the `needs_input` badge for [session] — the operator opening this
+  /// screen counts as having viewed/acted on the prompt. Called outside
+  /// `build` (from `initState`/`didUpdateWidget`) since mutating a
+  /// [StateNotifier] during build raises a modify-during-build error.
+  void _clearNeedsInput(String session) {
+    ref.read(needsInputProvider.notifier).clear(session);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final lines = ref.watch(paneProvider(widget.sessionName));
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(sessionName),
-        automaticallyImplyLeading: !embedded,
+        title: Text(widget.sessionName),
+        automaticallyImplyLeading: !widget.embedded,
       ),
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Expanded(child: PaneView(lines: lines)),
           const Divider(height: 1),
-          ApproveButtonRow(sessionName: sessionName),
+          ApproveButtonRow(sessionName: widget.sessionName),
           const Divider(height: 1),
-          _SendBar(sessionName: sessionName),
+          _SendBar(sessionName: widget.sessionName),
         ],
       ),
     );
