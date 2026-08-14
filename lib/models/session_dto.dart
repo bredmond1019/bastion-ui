@@ -7,23 +7,70 @@ library;
 // GET /api/sessions → SessionDto[]
 // ---------------------------------------------------------------------------
 
+/// Detected agent activity for a session (serve-api v0.26 §10.3).
+///
+/// This is DISTINCT from [SessionDto.state], which is tmux **pane
+/// liveness**. `agentState` is detected **agent** activity — a session can
+/// be `state: "running"` (pane alive) while `agentState` is
+/// [AgentState.idle] (the agent inside it isn't doing anything). Never
+/// collapse the two.
+enum AgentState {
+  idle,
+  working,
+  blocked,
+  unknown;
+
+  /// Maps the exact wire strings `"idle"` / `"working"` / `"blocked"` /
+  /// `"unknown"` to their enum value. An absent key (older server that
+  /// predates v0.26) or any unrecognised value degrades to [unknown]
+  /// rather than throwing.
+  factory AgentState.fromWire(String? value) {
+    switch (value) {
+      case 'idle':
+        return AgentState.idle;
+      case 'working':
+        return AgentState.working;
+      case 'blocked':
+        return AgentState.blocked;
+      default:
+        return AgentState.unknown;
+    }
+  }
+
+  /// The wire string for this value (Standing Rule 6 — mirror the
+  /// contract, never redefine it: the wire type stays a `String`).
+  String toWire() => name;
+}
+
 /// A single tmux-backed session summary (serve-api §10).
 ///
 /// ```json
-/// {"name": "my-session", "state": "running", "last_line": "$ "}
+/// {"name": "my-session", "state": "running", "last_line": "$ ", "agent_state": "working"}
 /// ```
+///
+/// `agent_state` arrives on BOTH `GET /api/sessions` and the `sessions`
+/// WebSocket push (serve-api v0.26 §10.3), so [agentState] stays live
+/// without extra work. It is DISTINCT from [state], which is tmux pane
+/// liveness — see [AgentState] doc comment.
 final class SessionDto {
   final String name;
   final String state;
   final String? lastLine;
+  final AgentState agentState;
 
-  const SessionDto({required this.name, required this.state, this.lastLine});
+  const SessionDto({
+    required this.name,
+    required this.state,
+    this.lastLine,
+    this.agentState = AgentState.unknown,
+  });
 
   factory SessionDto.fromJson(Map<String, dynamic> json) {
     return SessionDto(
       name: json['name'] as String? ?? '',
       state: json['state'] as String? ?? '',
       lastLine: json['last_line'] as String?,
+      agentState: AgentState.fromWire(json['agent_state'] as String?),
     );
   }
 
@@ -31,6 +78,7 @@ final class SessionDto {
     'name': name,
     'state': state,
     if (lastLine != null) 'last_line': lastLine,
+    'agent_state': agentState.toWire(),
   };
 }
 

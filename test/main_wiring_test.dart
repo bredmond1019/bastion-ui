@@ -36,6 +36,7 @@ import 'package:bastion_ui/services/bastion_socket.dart';
 import 'package:bastion_ui/state/connection_provider.dart';
 import 'package:bastion_ui/state/sessions_provider.dart'
     show bastionApiProvider, bastionSocketProvider;
+import 'package:bastion_ui/theme/tokens.dart';
 
 // ---------------------------------------------------------------------------
 // Fakes (no real network / platform channels)
@@ -233,6 +234,41 @@ void main() {
 
       expect(find.text('Configure a connection in Settings'), findsOneWidget);
       expect(find.text('Sessions'), findsNothing);
+    },
+  );
+
+  testWidgets(
+    'renders dark regardless of the host platform brightness (BU.10.A '
+    'Task 5) — this is the assertion that would have caught the stock '
+    'Material-light baseline this block exists to fix',
+    (tester) async {
+      // Force the ambient platform brightness to light. If BastionApp still
+      // wired `themeMode: ThemeMode.system` (or a light `theme:`), the
+      // rendered Scaffold would pick up a light background here.
+      tester.platformDispatcher.platformBrightnessTestValue = Brightness.light;
+      addTearDown(tester.platformDispatcher.clearPlatformBrightnessTestValue);
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            connectionProvider.overrideWith((_) => _DisconnectedNotifier()),
+          ],
+          child: const BastionApp(),
+        ),
+      );
+      await tester.pump();
+
+      final materialApp = tester.widget<MaterialApp>(find.byType(MaterialApp));
+      expect(materialApp.themeMode, ThemeMode.dark);
+      expect(materialApp.darkTheme, isNull);
+
+      final scaffold = tester.widget<Scaffold>(find.byType(Scaffold).first);
+      final resolvedBackground =
+          scaffold.backgroundColor ??
+          Theme.of(
+            tester.element(find.byType(Scaffold).first),
+          ).scaffoldBackgroundColor;
+      expect(resolvedBackground, AppTokens.paper);
     },
   );
 

@@ -106,6 +106,38 @@ flutter:
   assets:
     - assets/icon/app_icon.png
 
+  # Brand type trio (BU.10.A task1) — vendored OFL-licensed variable fonts, NOT the
+  # google_fonts package: this app is tailnet-only, so a device off the tailnet must
+  # never depend on a runtime font fetch. Each family is a single variable-font TTF;
+  # the weight-specific entries below select named instances from it (Flutter resolves
+  # the nearest weight axis position from a variable font — see
+  # https://docs.flutter.dev/cookbook/design/fonts). Sources (OFL.txt bundled alongside
+  # each font under assets/fonts/):
+  #   Inter          — https://github.com/google/fonts/tree/main/ofl/inter
+  #   Source Sans 3  — https://github.com/google/fonts/tree/main/ofl/sourcesans3
+  #   JetBrains Mono — https://github.com/google/fonts/tree/main/ofl/jetbrainsmono
+  fonts:
+    - family: Inter
+      fonts:
+        - asset: assets/fonts/Inter.ttf
+          weight: 400
+        - asset: assets/fonts/Inter.ttf
+          weight: 500
+        - asset: assets/fonts/Inter.ttf
+          weight: 700
+    - family: SourceSans3
+      fonts:
+        - asset: assets/fonts/SourceSans3.ttf
+          weight: 400
+        - asset: assets/fonts/SourceSans3.ttf
+          weight: 500
+        - asset: assets/fonts/SourceSans3.ttf
+          weight: 700
+    - family: JetBrainsMono
+      fonts:
+        - asset: assets/fonts/JetBrainsMono.ttf
+          weight: 400
+
 # flutter_launcher_icons config (BU.4.A task5) — run `dart run flutter_launcher_icons`
 # to regenerate android/app/src/main/res/mipmap-* from the source asset below.
 flutter_launcher_icons:

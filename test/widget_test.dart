@@ -30,17 +30,16 @@ void main() {
   });
 
   testWidgets(
-    'BastionApp supplies AppTheme.light/dark and follows system brightness '
-    '(BU.4.A Task 6)',
+    'BastionApp supplies AppTheme.dark and renders dark unconditionally '
+    '(BU.10.A Task 5)',
     (WidgetTester tester) async {
       await tester.pumpWidget(const ProviderScope(child: BastionApp()));
 
       final app = tester.widget<MaterialApp>(find.byType(MaterialApp));
-      expect(app.theme, equals(AppTheme.light));
-      expect(app.darkTheme, equals(AppTheme.dark));
-      expect(app.themeMode, equals(ThemeMode.system));
-      // Dark theme must be a genuine dark scheme, not the light one reused.
-      expect(app.darkTheme!.brightness, equals(Brightness.dark));
+      expect(app.theme, equals(AppTheme.dark));
+      expect(app.darkTheme, isNull);
+      expect(app.themeMode, equals(ThemeMode.dark));
+      expect(app.theme!.brightness, equals(Brightness.dark));
     },
   );
 

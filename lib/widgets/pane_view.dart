@@ -10,6 +10,9 @@ library;
 
 import 'package:flutter/material.dart';
 
+import '../theme/tokens.dart';
+import '../theme/typography.dart';
+
 /// Read-only, monospace view of a pane buffer that auto-scrolls to the
 /// bottom on every update.
 class PaneView extends StatefulWidget {
@@ -53,7 +56,7 @@ class _PaneViewState extends State<PaneView> {
   @override
   Widget build(BuildContext context) {
     return Container(
-      color: Colors.black,
+      color: AppTokens.paper,
       padding: const EdgeInsets.all(8),
       child: Scrollbar(
         controller: _controller,
@@ -62,9 +65,8 @@ class _PaneViewState extends State<PaneView> {
           scrollDirection: Axis.vertical,
           child: SelectableText(
             widget.lines.join('\n'),
-            style: const TextStyle(
-              fontFamily: 'monospace',
-              color: Colors.white,
+            style: AppTypography.mono.copyWith(
+              color: AppTokens.ink,
               fontSize: 12,
             ),
           ),

@@ -18,6 +18,7 @@ import 'package:bastion_ui/services/bastion_api.dart';
 import 'package:bastion_ui/services/bastion_socket.dart';
 import 'package:bastion_ui/state/events_provider.dart';
 import 'package:bastion_ui/state/sessions_provider.dart';
+import 'package:bastion_ui/theme/status_tones.dart';
 import 'package:bastion_ui/widgets/session_card.dart';
 
 // ---------------------------------------------------------------------------
@@ -142,6 +143,15 @@ void main() {
       expect(find.text('alpha'), findsOneWidget);
       expect(find.text('beta'), findsOneWidget);
       expect(find.byIcon(Icons.notifications_active), findsNothing);
+
+      // Running/idle dots resolve their colour from StatusTones, not a
+      // literal hex value (BU.10.A task 6).
+      final tones = StatusTones.dark;
+      final avatars = tester
+          .widgetList<CircleAvatar>(find.byType(CircleAvatar))
+          .toList();
+      expect(avatars[0].backgroundColor, tones.active.foreground);
+      expect(avatars[1].backgroundColor, tones.neutral.foreground);
     });
 
     testWidgets('shows empty state when there are no sessions', (tester) async {
@@ -168,6 +178,8 @@ void main() {
       await tester.pump();
 
       expect(find.byIcon(Icons.notifications_active), findsOneWidget);
+      final icon = tester.widget<Icon>(find.byIcon(Icons.notifications_active));
+      expect(icon.color, StatusTones.dark.warning.foreground);
     });
 
     testWidgets('needs-input flag clears when the event stream updates', (
@@ -197,6 +209,88 @@ void main() {
 
       expect(find.byIcon(Icons.notifications_active), findsNothing);
     });
+
+    testWidgets(
+      'phone width: opening a flagged session and popping back clears its '
+      'badge in the list (BU.ticket.needs-input-badge-clear)',
+      (tester) async {
+        _setPhoneWidth(tester);
+        const sessions = [SessionDto(name: 'alpha', state: 'running')];
+        final api = BastionApi(
+          host: 'test-host',
+          port: 4317,
+          token: 'test-token',
+          transport: _FakeHttpTransport(),
+        );
+        addTearDown(api.dispose);
+        final socket = BastionSocket(
+          host: 'test-host',
+          port: 4317,
+          token: 'test-token',
+          transportFactory: (uri, {headers}) => _FakeWsTransport(),
+        );
+        addTearDown(socket.dispose);
+
+        await tester.pumpWidget(
+          ProviderScope(
+            overrides: [
+              sessionsProvider.overrideWith(
+                (ref) => _FakeSessionsNotifier(sessions),
+              ),
+              // Real needsInputProvider (not the fake) so the detail
+              // screen's `clear()` call is the one actually observed by
+              // the list's badge — this is the operator-visible outcome
+              // the ticket is about, not just the provider mechanism.
+              needsInputProvider.overrideWith(
+                (ref) => NeedsInputNotifier(const Stream.empty()),
+              ),
+              bastionApiProvider.overrideWith((ref) => api),
+              bastionSocketProvider.overrideWith((ref) => socket),
+            ],
+            child: MaterialApp(
+              home: const SessionsListScreen(),
+              onGenerateRoute: (settings) {
+                if (settings.name == sessionDetailRouteName('alpha')) {
+                  return MaterialPageRoute<void>(
+                    builder: (_) =>
+                        const SessionDetailScreen(sessionName: 'alpha'),
+                  );
+                }
+                return MaterialPageRoute<void>(
+                  builder: (_) => const Scaffold(body: Text('detail')),
+                );
+              },
+            ),
+          ),
+        );
+        await tester.pump();
+
+        // Flag alpha directly through the provider (simulating an already
+        // arrived needs_input event) and confirm the badge shows.
+        final container = ProviderScope.containerOf(
+          tester.element(find.byType(SessionsListScreen)),
+        );
+        container.read(needsInputProvider.notifier).state = {'alpha'};
+        await tester.pump();
+        expect(find.byIcon(Icons.notifications_active), findsOneWidget);
+
+        // Push the detail route by tapping the card.
+        await tester.tap(find.byType(SessionCard));
+        await tester.pumpAndSettle();
+        expect(find.byType(SessionDetailScreen), findsOneWidget);
+        expect(container.read(needsInputProvider), isEmpty);
+
+        // Pop back to the list — the badge must be gone.
+        final navigator = tester.state<NavigatorState>(
+          find.byType(Navigator).first,
+        );
+        navigator.pop();
+        await tester.pumpAndSettle();
+
+        expect(find.byType(SessionsListScreen), findsOneWidget);
+        expect(find.byIcon(Icons.notifications_active), findsNothing);
+      },
+    );
 
     testWidgets(
       'phone width: tapping a card navigates toward the session detail '

@@ -1,8 +1,10 @@
 /// A single session summary card for the sessions-list screen.
 ///
 /// Renders a running/idle badge (from [SessionDto.state]), the session name,
-/// its last foreground line, and — when [needsInput] is true — a
-/// needs-input flag badge driven by `events_provider.dart`.
+/// its last foreground line, an agent-activity chip (from
+/// [SessionDto.agentState] — distinct from the running/idle badge, see
+/// [_AgentStateChip]), and — when [needsInput] is true — a needs-input flag
+/// badge driven by `events_provider.dart`.
 ///
 /// Purely presentational: does not read providers itself, so it stays easy
 /// to unit-test with plain constructor arguments.
@@ -11,6 +13,8 @@ library;
 import 'package:flutter/material.dart';
 
 import '../models/session_dto.dart';
+import '../theme/status_tones.dart';
+import '../theme/tokens.dart';
 
 /// A running/idle summary card for one [SessionDto].
 class SessionCard extends StatelessWidget {
@@ -41,7 +45,16 @@ class SessionCard extends StatelessWidget {
       child: ListTile(
         onTap: onTap,
         leading: _StateBadge(isRunning: _isRunning),
-        title: Text(session.name),
+        title: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Flexible(child: Text(session.name)),
+            if (session.agentState != AgentState.unknown) ...[
+              const SizedBox(width: 8),
+              _AgentStateChip(agentState: session.agentState),
+            ],
+          ],
+        ),
         subtitle: Text(
           session.lastLine?.isNotEmpty == true ? session.lastLine! : ' ',
           maxLines: 1,
@@ -62,13 +75,82 @@ class _StateBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final tones = context.statusTones;
     return Tooltip(
       message: isRunning ? 'Running' : 'Idle',
       child: CircleAvatar(
         radius: 6,
         backgroundColor: isRunning
-            ? const Color(0xFF388E3C) // green 700
-            : const Color(0xFF9E9E9E), // grey 500
+            ? tones.active.foreground
+            : tones.neutral.foreground,
+      ),
+    );
+  }
+}
+
+/// Labelled chip surfacing [SessionDto.agentState] — detected AGENT
+/// activity, as opposed to [_StateBadge]'s tmux PANE liveness. The two are
+/// independent (a session can be `state: running` with `agent_state:
+/// idle`), so this is a distinct affordance rather than a replacement for
+/// the leading dot. [AgentState.unknown] renders no chip at all (handled by
+/// the caller) — an unknown state is noise, not signal.
+///
+/// `blocked` carries the most visual weight (bold text, filled background):
+/// it is the state the operator most needs to act on.
+class _AgentStateChip extends StatelessWidget {
+  const _AgentStateChip({required this.agentState});
+
+  final AgentState agentState;
+
+  String get _label {
+    switch (agentState) {
+      case AgentState.working:
+        return 'working';
+      case AgentState.idle:
+        return 'idle';
+      case AgentState.blocked:
+        return 'blocked';
+      case AgentState.unknown:
+        return 'unknown';
+    }
+  }
+
+  StatusTone _tone(StatusTones tones) {
+    switch (agentState) {
+      case AgentState.working:
+        return tones.info;
+      case AgentState.idle:
+        return tones.neutral;
+      case AgentState.blocked:
+        return tones.danger;
+      case AgentState.unknown:
+        return tones.neutral;
+    }
+  }
+
+  bool get _emphasized => agentState == AgentState.blocked;
+
+  @override
+  Widget build(BuildContext context) {
+    final tone = _tone(context.statusTones);
+    final color = tone.foreground;
+    return Tooltip(
+      message: 'Agent $_label',
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+        decoration: BoxDecoration(
+          color: _emphasized ? color : tone.background,
+          borderRadius: BorderRadius.circular(4),
+          border: _emphasized ? null : Border.all(color: tone.border, width: 1),
+        ),
+        child: Text(
+          _label,
+          style: TextStyle(
+            fontSize: 11,
+            fontWeight: _emphasized ? FontWeight.bold : FontWeight.w500,
+            color: _emphasized ? AppTokens.paper : color,
+          ),
+        ),
       ),
     );
   }
@@ -80,9 +162,12 @@ class _NeedsInputBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const Tooltip(
+    return Tooltip(
       message: 'Needs input',
-      child: Icon(Icons.notifications_active, color: Color(0xFFE65100)),
+      child: Icon(
+        Icons.notifications_active,
+        color: context.statusTones.warning.foreground,
+      ),
     );
   }
 }

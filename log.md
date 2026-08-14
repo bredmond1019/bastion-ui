@@ -2,7 +2,7 @@
 type: Log
 title: BastionUI Development Log
 description: Chronological log of work completed for BastionUI.
-timestamp: "2026-08-14T09:18:03Z"
+timestamp: "2026-08-14T11:52:00Z"
 ---
 
 # Log — BastionUI
@@ -10,6 +10,100 @@ timestamp: "2026-08-14T09:18:03Z"
 *Append-only working log. One dated entry per session. Newest entries at the top.*
 
 ---
+
+## [run: 2026-08-14]
+
+`BU.10.A` (design tokens + dark-only theme foundation) closed — all 7 tasks passed on the first
+attempt, end-of-run review **PASS**. Task 1 vendored the three OFL brand type families (Inter,
+Source Sans 3, JetBrains Mono) as variable-font TTFs via `pubspec.yaml` (not the `google_fonts`
+package, per the tailnet-only constraint). Task 2 added `lib/theme/tokens.dart` (`AppTokens`:
+cool-aurora palette, radius ladder, glow values, alpha helper). Task 3 added the `StatusTones`
+`ThemeExtension` (six semantic tones — neutral/info/active/success/warning/danger — each with
+foreground/background/border) with safe `ThemeData`/`BuildContext` fallback accessors. Task 4 added
+`lib/theme/typography.dart` (`AppTypography.textTheme`: Inter for display/headline/title, Source
+Sans 3 for body/label, JetBrains Mono for mono/labels). Task 5 replaced `ColorScheme.fromSeed` with
+a single explicit `AppTheme.dark` built from tokens/tones/typography, wired `main.dart` to
+`ThemeMode.dark` and dropped `darkTheme`/`ThemeMode.system`. Task 6 migrated the four widgets that
+hardcoded `Color(0x...)` literals (`connection_banner`, `session_card`, `status_badge`,
+`pane_view`) to read `StatusTones`/`AppTokens` instead, adding a guard test enforcing zero such
+literals remain outside `lib/theme/`. Task 7 validated the full gating suite with no further code
+changes. Notable decisions: `AppTheme.dark` is a cached `static final` (not a getter) because
+`NavigationBarThemeData`'s `WidgetStateProperty.resolveWith` closures break `==` equality across
+rebuilt `ThemeData` instances; `ConnectionBanner` and the emphasized agent-state chip use a tone's
+solid `foreground` as background with `AppTokens.paper` text (rather than the tone's own
+low-alpha `background`/`border`) for contrast on a full-bleed strip. `test/widget_test.dart` was
+updated (outside task 5's listed files) because it referenced the now-deleted
+`AppTheme.light`/`ThemeMode.system` wiring. Next: `BU.10.B` (brand primitive widget kit, ported
+from `bastion-web/components/ui/brand.tsx`).
+
+```
+957dbb5 docs: update docs for 10.A-design-tokens-theme
+7c55986 feat: implement 10.A-design-tokens-theme-task6
+e19ad5c feat: implement 10.A-design-tokens-theme-task5
+f242d6d feat: implement 10.A-design-tokens-theme-task4
+8c9cb6c feat: implement 10.A-design-tokens-theme-task3
+570ae94 feat: implement 10.A-design-tokens-theme-task2
+6b7e2a5 feat: implement 10.A-design-tokens-theme-task1
+660dec6 feat: implement ticket-needs-input-badge-clear-task3
+```
+
+---
+
+## [2026-08-14] (3)
+
+### Phases 10–12 registered — brand + operator surfaces roadmap, Wave 0 and 5 specs
+
+- **What:** A four-way audit (this app · `bastion serve` · `bastion-web` · the bastiel/cockpit
+  brand) measured two gaps: the app targets serve-api **v0.5** against a **v0.30** server and calls
+  **12 of 26** routes, and it carries no brand at all (`lib/theme/app_theme.dart` was 28 lines of
+  `ColorScheme.fromSeed(Colors.blueGrey)` on `ThemeMode.system`, rendering stock Material *light*).
+  Authored **Phase 10** (brand system: tokens → primitives → re-skin), **Phase 11** (operator read
+  surfaces: v0.30 contract layer → briefing+attention → docs reader) and **Phase 12** (engine
+  control: client+`X-API-Key` → runs → live `runs` WS topic → pause/resume/abort → launch) as 11
+  block sections in `master-plan.md`, and registered 11 blocks + 2 tickets in `state.json`. Retired
+  `BU.5.A` to `wontfix` (Phase 12 decomposes it) and **dropped the deferred serve-api v1.0.0 pin**
+  that had blocked `BU.5.A`/`BU.6.A` since 2026-07-23. Created roadmap
+  `bastion-ui-brand-and-surfaces` at HQ (roadmap.md + lane-bastion-ui.txt + lane-log.jsonl +
+  context.md), with two operator gates modelled as typed `depends_on` edges. Then wrote the five
+  specs whose decomposition does not depend on a predecessor's concrete output:
+  `ticket-session-agent-state`, `ticket-dashboard-now-render`, `ticket-needs-input-badge-clear`,
+  `10.A-design-tokens-theme`, `11.A-serve-api-v030-contract-layer` (23 tasks total).
+- **Why:** The app had drifted 25 contract versions behind the server while waiting on a v1.0.0
+  freeze that was never going to arrive — nine contract amendments landed in August alone. And every
+  screen added before the brand lands is a screen that has to be retreaded afterwards, so the
+  operator chose brand first. The audit also surfaced two real bugs worth ticketing: the Dashboard
+  renders a literal `[]` on every repo card, and `NeedsInputNotifier.clear()` is implemented, tested,
+  and called from nowhere — so the needs-input badge never clears.
+- **Refs:** commits `3559d4e1` (Wave 0), `49049f54` (specs + context);
+  `planning/roadmaps/bastion-ui-brand-and-surfaces/` at HQ; `planning/handoff.md`. The other nine
+  specs are deliberately ungenerated — they need real token names, constructors and DTO fields to
+  spec without inventing them (context.md §9).
+
+---
+
+## [2026-08-14] (2)
+
+### Patrol wired into the harness as a non-gating, manual-only check
+
+- **What:** Registered `patrol-visual-smoke` in `planning/harness.json`'s `validation.checks[]`
+  (`gates: false`), driven by a new `scripts/run_patrol_smoke.sh`. The script self-skips (exit 0)
+  when there's no attached Android device/emulator or no built `bastion` binary; otherwise it
+  starts a real `bastion serve` on `:4317` (reusing one already running there), runs
+  `patrol_test/smoke_test.dart` against it, and tears the server down on exit if it started it.
+  Verified end-to-end: ran clean (12/12 steps pass, server auto-started and cleanly torn down) and
+  self-skip verified separately (no device → `SKIPPED`, exit 0). Deliberately **not** wired through
+  `harness.json`'s `uiTest` field — that's `playwright-cli`/web-specific mechanism baked into
+  `sdlc-run.js`'s UI Test stage, not a generic hook, so extending it for Patrol would mean editing
+  the engine for stack reasons (against this project's own standing rule). Recorded as
+  `planning/decisions/D3-patrol-non-gating-harness-check.md`. Resolved and removed the
+  `patrol-harness-adoption-undecided` carryover entry.
+- **Why:** User asked for parity with how Playwright is wired into the harness for Next.js apps,
+  then clarified it must never run automatically on every task (development-time cost) — `gates:
+  false` under this project's `testDepth=fast` default means the SDLC engines never invoke it
+  per-task or on the terminal reconcile pass; it only runs when a human or agent calls it
+  deliberately, same trust level as the existing `e2e-serve-contract` check.
+- **Refs:** `scripts/run_patrol_smoke.sh`, `planning/harness.json`,
+  `planning/decisions/D3-patrol-non-gating-harness-check.md`.
 
 ## [2026-08-14]
 

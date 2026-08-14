@@ -40,8 +40,14 @@ Also activates `notificationWiringProvider` and
 ## `SettingsScreen`
 
 Not tab-routed — pushed via the AppBar settings `IconButton` on `HomeShell`. Form for
-server host, port (default `4317`), and bearer token; validates all three, then calls
+server host, port (default `4317` — matches `bastion serve`'s compiled-in `--addr` default,
+per `bastion/docs/serve-api.md`), and bearer token; validates all three, then calls
 `ConnectionNotifier.saveConfig` (persists via `FlutterSecureStorage`).
+
+> **Deployment note:** the Mac Mini's real console instance (`com.brandon.bastion-serve`) is
+> bound to port `8080`, not `4317` — see `docs/infrastructure.md`'s Services table. `4317`
+> remains correct as the app's default for now (local dev/testing on this machine); revisit
+> before shipping to a phone that needs to reach the Mini for real.
 
 ## `SessionsListScreen`
 

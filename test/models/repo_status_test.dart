@@ -58,7 +58,10 @@ void main() {
       expect(dto.name, 'bastion');
       expect(dto.now, 'BA.11.D in progress — repo status API');
       expect(dto.next, 'Wire WS event push');
-      expect(dto.blocked, '[]');
+      // The server sends the literal sentinel string "[]" for an empty YAML
+      // list; the DTO layer normalises it to '' (see
+      // repo_status_empty_sentinel_test.dart for full sentinel coverage).
+      expect(dto.blocked, '');
       expect(dto.hasHandoff, isFalse);
       expect(dto.momentumNow, 'BA.11.D in progress — repo status API');
       expect(dto.momentumNext, 'Wire WS event push');
