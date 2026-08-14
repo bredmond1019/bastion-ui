@@ -14,6 +14,8 @@ import 'package:bastion_ui/models/repo_status_dto.dart';
 import 'package:bastion_ui/screens/dashboard_screen.dart';
 import 'package:bastion_ui/state/repos_provider.dart';
 import 'package:bastion_ui/state/workflows_provider.dart';
+import 'package:bastion_ui/theme/app_theme.dart';
+import 'package:bastion_ui/widgets/brand/brand.dart';
 
 class _FakeRepoListNotifier extends StateNotifier<List<RepoSummaryDto>>
     implements RepoListNotifier {
@@ -49,7 +51,7 @@ Widget _buildScreen({required List<RepoSummaryDto> repos}) {
 
   return ProviderScope(
     overrides: overrides,
-    child: const MaterialApp(home: DashboardScreen()),
+    child: MaterialApp(theme: AppTheme.dark, home: const DashboardScreen()),
   );
 }
 
@@ -82,21 +84,29 @@ void main() {
         // sentinel text must never appear anywhere on screen.
         expect(find.text('[]'), findsNothing);
 
-        // alpha (empty now) has no subtitle Text widget at all.
-        final alphaTile = tester.widget<ListTile>(
-          find.ancestor(
-            of: find.text('alpha'),
-            matching: find.byType(ListTile),
-          ),
+        // alpha (empty now) renders its name and its `StatusPill` label
+        // ("IDLE") inside its PanelCard, but no third Text widget for a
+        // `now` line — the row's fixed content (name + pill) accounts for
+        // exactly two Text widgets; a real `now` value would add a third.
+        final alphaCard = find.ancestor(
+          of: find.text('alpha'),
+          matching: find.byType(PanelCard),
         );
-        expect(alphaTile.subtitle, isNull);
+        expect(
+          find.descendant(of: alphaCard, matching: find.byType(Text)),
+          findsNWidgets(2),
+        );
 
-        // beta (real now) still renders its subtitle text.
-        expect(find.text('shipping task 4'), findsOneWidget);
-        final betaTile = tester.widget<ListTile>(
-          find.ancestor(of: find.text('beta'), matching: find.byType(ListTile)),
+        // beta (real now) still renders both its name and its now-line
+        // text inside its own PanelCard.
+        final betaCard = find.ancestor(
+          of: find.text('beta'),
+          matching: find.byType(PanelCard),
         );
-        expect(betaTile.subtitle, isNotNull);
+        expect(
+          find.descendant(of: betaCard, matching: find.text('shipping task 4')),
+          findsOneWidget,
+        );
       },
     );
   });

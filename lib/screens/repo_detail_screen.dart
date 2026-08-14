@@ -12,6 +12,13 @@
 /// covered by `workflows_provider.dart`'s Task 3 fetch. [repoHandoffProvider]
 /// (a `FutureProvider.family`, local to this file) makes that call directly
 /// through the shared `bastionApiProvider`, only when `hasHandoff` is true.
+///
+/// Re-skinned in `BU.10.C` task 4: the status table and workflow list now
+/// render inside a [PanelCard] each, section labels use [Eyebrow], and the
+/// screen's display heading (the repo name) wears a [HeadingRule]
+/// underneath (budget rule: one per screen). Every status-field row already
+/// guarded against the `[]` empty-collection sentinel
+/// (`RepoStatusDto`'s field parsers) — that guard is unchanged here.
 library;
 
 import 'package:flutter/material.dart';
@@ -20,6 +27,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/repo_status_dto.dart';
 import '../state/sessions_provider.dart' show bastionApiProvider;
 import '../state/workflows_provider.dart';
+import '../theme/tokens.dart';
+import '../theme/typography.dart';
+import '../widgets/brand/brand.dart';
 import '../widgets/markdown_view.dart';
 import '../widgets/workflow_progress.dart';
 
@@ -61,28 +71,49 @@ class RepoDetailScreen extends ConsumerWidget {
       body: workflowsState.loading && status == null
           ? const Center(child: CircularProgressIndicator())
           : ListView(
-              padding: const EdgeInsets.all(12),
+              padding: const EdgeInsets.all(16),
               children: [
+                _RepoDetailHeading(repoName: repoName),
+                const SizedBox(height: 16),
                 if (status != null) _StatusTable(status: status),
                 if (status != null && status.hasHandoff) ...[
                   const SizedBox(height: 16),
                   _HandoffSection(repoName: repoName),
                 ],
                 const SizedBox(height: 16),
-                const Text(
-                  'Workflows',
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                const Padding(
+                  padding: EdgeInsets.only(bottom: 8),
+                  child: Eyebrow(label: 'Workflows'),
                 ),
                 if (workflowsState.workflows.isEmpty)
-                  const Padding(
-                    padding: EdgeInsets.symmetric(vertical: 8),
-                    child: Text('No workflows'),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    child: Text(
+                      'No workflows',
+                      style: AppTypography.textTheme.bodyMedium?.copyWith(
+                        color: AppTokens.inkFaint,
+                      ),
+                    ),
                   )
                 else
-                  ...workflowsState.workflows.map(
-                    (w) => WorkflowProgress(
-                      key: ValueKey('workflow-progress-row-${w.specSlug}'),
-                      workflow: w,
+                  PanelCard(
+                    child: Column(
+                      children: [
+                        for (final (i, w) in workflowsState.workflows.indexed)
+                          WorkflowProgress(
+                            // Indexed rather than keyed on `specSlug` alone:
+                            // two workflow rows can legitimately share a
+                            // spec slug (a re-run), and this list renders as
+                            // direct children of one `Column` (unlike the
+                            // pre-brand `ListView.children`), so sibling
+                            // keys must be unique within a single build, not
+                            // just distinct-looking.
+                            key: ValueKey(
+                              'workflow-progress-row-${w.specSlug}-$i',
+                            ),
+                            workflow: w,
+                          ),
+                      ],
                     ),
                   ),
               ],
@@ -91,8 +122,33 @@ class RepoDetailScreen extends ConsumerWidget {
   }
 }
 
+/// This screen's display heading — the repo name — with one [HeadingRule]
+/// underneath, per the block's budget rule (one per screen).
+class _RepoDetailHeading extends StatelessWidget {
+  const _RepoDetailHeading({required this.repoName});
+
+  final String repoName;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          repoName,
+          style: AppTypography.textTheme.headlineSmall?.copyWith(
+            color: AppTokens.ink,
+          ),
+        ),
+        const SizedBox(height: 8),
+        const HeadingRule(),
+      ],
+    );
+  }
+}
+
 /// The parsed `now`/`next`/`blocked`/momentum status fields, rendered as a
-/// simple label/value table.
+/// simple label/value table inside a [PanelCard].
 class _StatusTable extends StatelessWidget {
   const _StatusTable({required this.status});
 
@@ -111,35 +167,48 @@ class _StatusTable extends StatelessWidget {
       ('Momentum — recurring', status.momentumRecurring),
     ];
 
-    return Column(
-      key: const ValueKey('repo-status-table'),
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        for (final (label, value) in rows)
-          if (value.isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 4),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    label,
-                    style: const TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 12,
-                      color: Colors.grey,
-                    ),
-                  ),
-                  Text(value),
-                ],
-              ),
+    return PanelCard(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          key: const ValueKey('repo-status-table'),
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Padding(
+              padding: EdgeInsets.only(bottom: 8),
+              child: Eyebrow(label: 'Status'),
             ),
-      ],
+            for (final (label, value) in rows)
+              if (value.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 4),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        label,
+                        style: AppTypography.textTheme.labelSmall?.copyWith(
+                          color: AppTokens.inkSoft,
+                        ),
+                      ),
+                      Text(
+                        value,
+                        style: AppTypography.textTheme.bodyMedium?.copyWith(
+                          color: AppTokens.ink,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+          ],
+        ),
+      ),
     );
   }
 }
 
-/// Handoff title + markdown body, fetched via [repoHandoffProvider].
+/// Handoff title + markdown body, fetched via [repoHandoffProvider], shown
+/// inside a [PanelCard].
 ///
 /// The caller only mounts this widget when `status.hasHandoff` is true, but
 /// [repoHandoffProvider] can still legitimately resolve `null` (a race
@@ -157,17 +226,28 @@ class _HandoffSection extends ConsumerWidget {
     return handoff.when(
       data: (info) {
         if (info == null) return const SizedBox.shrink();
-        return Column(
-          key: const ValueKey('repo-handoff-section'),
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              info.title,
-              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+        return PanelCard(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              key: const ValueKey('repo-handoff-section'),
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Padding(
+                  padding: EdgeInsets.only(bottom: 8),
+                  child: Eyebrow(label: 'Handoff'),
+                ),
+                Text(
+                  info.title,
+                  style: AppTypography.textTheme.titleSmall?.copyWith(
+                    color: AppTokens.ink,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                MarkdownView(data: info.body),
+              ],
             ),
-            const SizedBox(height: 8),
-            MarkdownView(data: info.body),
-          ],
+          ),
         );
       },
       loading: () => const Padding(
