@@ -23,6 +23,7 @@ import 'package:bastion_ui/state/connection_provider.dart'
     show secureStorageProvider;
 import 'package:bastion_ui/state/sessions_provider.dart'
     show bastionApiProvider, sessionsProvider, SessionsNotifier;
+import 'package:bastion_ui/widgets/brand/brand.dart';
 import 'package:bastion_ui/widgets/command_invoke_sheet.dart';
 
 // ---------------------------------------------------------------------------
@@ -155,6 +156,38 @@ void main() {
       for (final entry in defaultPaletteCommands) {
         expect(find.text(entry.label), findsOneWidget);
       }
+    });
+
+    testWidgets('renders brand primitives — PanelCard, HeadingRule, IconTile', (
+      tester,
+    ) async {
+      await tester.pumpWidget(_buildScreen(httpTransport: FakeHttpTransport()));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(PanelCard), findsWidgets);
+      expect(find.byType(HeadingRule), findsOneWidget);
+      expect(find.byType(GradientTopBar), findsWidgets);
+      expect(find.byType(IconTile), findsWidgets);
+    });
+
+    testWidgets('invoke sheet shows the Eyebrow label and the fired command', (
+      tester,
+    ) async {
+      await tester.pumpWidget(_buildScreen(httpTransport: FakeHttpTransport()));
+      await tester.pumpAndSettle();
+
+      final fired = defaultPaletteCommands[0];
+      await tester.tap(find.text(fired.label));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(Eyebrow), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byType(CommandInvokeSheet),
+          matching: find.text(fired.command),
+        ),
+        findsOneWidget,
+      );
     });
 
     testWidgets('add creates a new persisted entry', (tester) async {

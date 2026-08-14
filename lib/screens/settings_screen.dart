@@ -4,6 +4,13 @@
 /// - Validates required fields (host non-empty, port a valid integer, token non-empty).
 /// - Persists config via [ConnectionNotifier.saveConfig], which stores the
 ///   bearer token in [FlutterSecureStorage] (never shared_preferences — Rule 7).
+///
+/// Re-skinned in `BU.10.C` task 5: the two field groups are now [PanelCard]
+/// sections, each headed by one [Eyebrow] label. Fields take
+/// [AppTokens.surfaceMuted] as their fill, [AppTokens.line] as their
+/// hairline border, and [AppTokens.primary] on focus — this is a visual
+/// pass only, the [FlutterSecureStorage]-backed token path is untouched
+/// (Standing Rule 7).
 library;
 
 import 'package:flutter/material.dart';
@@ -11,6 +18,9 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../state/connection_provider.dart';
+import '../theme/tokens.dart';
+import '../theme/typography.dart';
+import '../widgets/brand/brand.dart';
 
 /// Settings screen allowing the user to configure the bastion server address
 /// and bearer token.  Port defaults to 4317 per the serve-api spec.
@@ -109,6 +119,32 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     }
   }
 
+  /// Shared field decoration: [AppTokens.surfaceMuted] fill, hairline
+  /// border in [AppTokens.line], [AppTokens.primary] on focus — the token
+  /// treatment named in the block's Task 5 description.
+  InputDecoration _fieldDecoration({
+    required String labelText,
+    String? hintText,
+    Widget? suffixIcon,
+  }) {
+    final border = OutlineInputBorder(
+      borderRadius: BorderRadius.circular(AppTokens.radiusMd),
+      borderSide: const BorderSide(color: AppTokens.line),
+    );
+    return InputDecoration(
+      labelText: labelText,
+      hintText: hintText,
+      suffixIcon: suffixIcon,
+      filled: true,
+      fillColor: AppTokens.surfaceMuted,
+      border: border,
+      enabledBorder: border,
+      focusedBorder: border.copyWith(
+        borderSide: const BorderSide(color: AppTokens.primary, width: 2),
+      ),
+    );
+  }
+
   // ---- Build --------------------------------------------------------------
 
   @override
@@ -122,53 +158,91 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // Host
-              TextFormField(
-                controller: _hostController,
-                decoration: const InputDecoration(
-                  labelText: 'Server host',
-                  hintText: 'e.g. 100.x.y.z or hostname.tailnet',
-                  border: OutlineInputBorder(),
-                ),
-                keyboardType: TextInputType.url,
-                autocorrect: false,
-                validator: _validateHost,
-              ),
-              const SizedBox(height: 16),
-
-              // Port
-              TextFormField(
-                controller: _portController,
-                decoration: const InputDecoration(
-                  labelText: 'Port',
-                  hintText: '4317',
-                  border: OutlineInputBorder(),
-                ),
-                keyboardType: TextInputType.number,
-                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                validator: _validatePort,
-              ),
-              const SizedBox(height: 16),
-
-              // Bearer token (secure)
-              TextFormField(
-                controller: _tokenController,
-                decoration: InputDecoration(
-                  labelText: 'Bearer token',
-                  border: const OutlineInputBorder(),
-                  suffixIcon: IconButton(
-                    icon: Icon(
-                      _tokenObscured ? Icons.visibility : Icons.visibility_off,
-                    ),
-                    onPressed: () =>
-                        setState(() => _tokenObscured = !_tokenObscured),
-                    tooltip: _tokenObscured ? 'Show token' : 'Hide token',
+              // Connection group: host + port.
+              PanelCard(
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Eyebrow(label: 'Connection'),
+                      const SizedBox(height: 16),
+                      TextFormField(
+                        controller: _hostController,
+                        style: AppTypography.textTheme.bodyMedium?.copyWith(
+                          color: AppTokens.ink,
+                        ),
+                        decoration: _fieldDecoration(
+                          labelText: 'Server host',
+                          hintText: 'e.g. 100.x.y.z or hostname.tailnet',
+                        ),
+                        keyboardType: TextInputType.url,
+                        autocorrect: false,
+                        validator: _validateHost,
+                      ),
+                      const SizedBox(height: 16),
+                      TextFormField(
+                        controller: _portController,
+                        style: AppTypography.textTheme.bodyMedium?.copyWith(
+                          color: AppTokens.ink,
+                        ),
+                        decoration: _fieldDecoration(
+                          labelText: 'Port',
+                          hintText: '4317',
+                        ),
+                        keyboardType: TextInputType.number,
+                        inputFormatters: [
+                          FilteringTextInputFormatter.digitsOnly,
+                        ],
+                        validator: _validatePort,
+                      ),
+                    ],
                   ),
                 ),
-                obscureText: _tokenObscured,
-                autocorrect: false,
-                enableSuggestions: false,
-                validator: _validateToken,
+              ),
+              const SizedBox(height: 16),
+
+              // Authentication group: bearer token.
+              PanelCard(
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Eyebrow(label: 'Authentication'),
+                      const SizedBox(height: 16),
+                      TextFormField(
+                        controller: _tokenController,
+                        style: AppTypography.textTheme.bodyMedium?.copyWith(
+                          color: AppTokens.ink,
+                        ),
+                        decoration: _fieldDecoration(
+                          labelText: 'Bearer token',
+                          suffixIcon: IconButton(
+                            icon: Icon(
+                              _tokenObscured
+                                  ? Icons.visibility
+                                  : Icons.visibility_off,
+                              color: AppTokens.inkSoft,
+                            ),
+                            onPressed: () => setState(
+                              () => _tokenObscured = !_tokenObscured,
+                            ),
+                            tooltip: _tokenObscured
+                                ? 'Show token'
+                                : 'Hide token',
+                          ),
+                        ),
+                        obscureText: _tokenObscured,
+                        autocorrect: false,
+                        enableSuggestions: false,
+                        validator: _validateToken,
+                      ),
+                    ],
+                  ),
+                ),
               ),
               const SizedBox(height: 24),
 

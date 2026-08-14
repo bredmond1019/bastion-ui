@@ -16,6 +16,12 @@
 ///   and does NOT pop with a session id (the caller sees `null` only on an
 ///   explicit cancel — a failed invoke keeps the sheet open so the user can
 ///   retry or dismiss it themselves).
+///
+/// Re-skinned in `BU.10.C` task 5: the sheet body sits on an
+/// [AppTokens.surface] ground with rounded top corners, headed by one
+/// [Eyebrow] label; the fired command string renders in the mono family
+/// (content, not a label — no uppercase/tracking applied to it) and the
+/// inline error message reads through [AppTokens.destructive].
 library;
 
 import 'dart:convert';
@@ -28,6 +34,9 @@ import '../models/dto.dart' show ErrorPayload;
 import '../services/bastion_api.dart';
 import '../state/sessions_provider.dart'
     show bastionApiProvider, sessionsProvider;
+import '../theme/tokens.dart';
+import '../theme/typography.dart';
+import 'brand/brand.dart';
 
 /// Presents [CommandInvokeSheet] as a modal bottom sheet for [command].
 ///
@@ -149,7 +158,13 @@ class _CommandInvokeSheetState extends ConsumerState<CommandInvokeSheet> {
   @override
   Widget build(BuildContext context) {
     final sessions = ref.watch(sessionsProvider);
-    return Padding(
+    return Container(
+      decoration: const BoxDecoration(
+        color: AppTokens.surface,
+        borderRadius: BorderRadius.vertical(
+          top: Radius.circular(AppTokens.radiusXxl),
+        ),
+      ),
       padding: EdgeInsets.only(
         left: 16,
         right: 16,
@@ -161,9 +176,11 @@ class _CommandInvokeSheetState extends ConsumerState<CommandInvokeSheet> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            const Eyebrow(label: 'Invoke'),
+            const SizedBox(height: 10),
             Text(
-              'Run ${widget.command}',
-              style: Theme.of(context).textTheme.titleMedium,
+              widget.command,
+              style: AppTypography.mono.copyWith(color: AppTokens.ink),
             ),
             const SizedBox(height: 12),
             SegmentedButton<CommandMode>(
@@ -190,7 +207,9 @@ class _CommandInvokeSheetState extends ConsumerState<CommandInvokeSheet> {
               Text(
                 _errorMessage!,
                 key: const Key('command-invoke-error'),
-                style: TextStyle(color: Theme.of(context).colorScheme.error),
+                style: AppTypography.textTheme.bodyMedium?.copyWith(
+                  color: AppTokens.destructive,
+                ),
               ),
             ],
             const SizedBox(height: 16),
