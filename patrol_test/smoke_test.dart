@@ -26,9 +26,7 @@ const _serveToken = 'patrol-smoke-token';
 
 void main() {
   patrolTest('smoke: connect, tour every tab, and open a session', ($) async {
-    await $.pumpWidgetAndSettle(
-      const ProviderScope(child: BastionApp()),
-    );
+    await $.pumpWidgetAndSettle(const ProviderScope(child: BastionApp()));
     expect($('Configure a connection in Settings'), findsOneWidget);
 
     // ---- Settings: configure + connect ----
