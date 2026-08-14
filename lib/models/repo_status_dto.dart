@@ -3,6 +3,24 @@
 /// This file is pure Dart — no Flutter or socket imports.
 library;
 
+/// Normalises an empty-collection sentinel to `''`.
+///
+/// `bastion serve` serialises an empty YAML frontmatter list (e.g. `now: []`)
+/// as the literal string `"[]"` rather than an empty string or `null` (see
+/// `../bastion/src/serve/status/repo.rs`). Every DTO field sourced from that
+/// frontmatter must defend against it here so no screen ever renders the
+/// literal sentinel text. Only a value that, once trimmed, is *entirely* a
+/// sentinel (`[]`, `[ ]`, `{}`, `{ }`) is blanked — a real value that merely
+/// contains brackets (e.g. `"fixing parse of [] literals"`) passes through
+/// unchanged.
+String _text(dynamic v) {
+  if (v is! String) return '';
+  final trimmed = v.trim();
+  const sentinels = {'[]', '[ ]', '{}', '{ }'};
+  if (sentinels.contains(trimmed)) return '';
+  return v;
+}
+
 // ---------------------------------------------------------------------------
 // GET /api/repos → RepoSummaryDto[]
 // ---------------------------------------------------------------------------
@@ -26,7 +44,7 @@ final class RepoSummaryDto {
   factory RepoSummaryDto.fromJson(Map<String, dynamic> json) {
     return RepoSummaryDto(
       name: json['name'] as String? ?? '',
-      now: json['now'] as String? ?? '',
+      now: _text(json['now']),
       hasHandoff: json['has_handoff'] as bool? ?? false,
     );
   }
@@ -86,15 +104,15 @@ final class RepoStatusDto {
   factory RepoStatusDto.fromJson(Map<String, dynamic> json) {
     return RepoStatusDto(
       name: json['name'] as String? ?? '',
-      now: json['now'] as String? ?? '',
-      next: json['next'] as String? ?? '',
-      blocked: json['blocked'] as String? ?? '',
+      now: _text(json['now']),
+      next: _text(json['next']),
+      blocked: _text(json['blocked']),
       hasHandoff: json['has_handoff'] as bool? ?? false,
-      momentumNow: json['momentum_now'] as String? ?? '',
-      momentumNext: json['momentum_next'] as String? ?? '',
-      momentumBlocked: json['momentum_blocked'] as String? ?? '',
-      momentumImprove: json['momentum_improve'] as String? ?? '',
-      momentumRecurring: json['momentum_recurring'] as String? ?? '',
+      momentumNow: _text(json['momentum_now']),
+      momentumNext: _text(json['momentum_next']),
+      momentumBlocked: _text(json['momentum_blocked']),
+      momentumImprove: _text(json['momentum_improve']),
+      momentumRecurring: _text(json['momentum_recurring']),
     );
   }
 
