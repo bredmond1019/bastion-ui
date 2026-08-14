@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:bastion_ui/theme/tokens.dart';
 import 'package:bastion_ui/widgets/responsive_scaffold.dart';
 
 Widget _atWidth(double width, {required Widget child}) {
@@ -36,7 +37,18 @@ void main() {
       );
       expect(find.byKey(const ValueKey('list')), findsOneWidget);
       expect(find.byKey(const ValueKey('detail')), findsOneWidget);
-      expect(find.byType(VerticalDivider), findsOneWidget);
+      final divider = t.widget<VerticalDivider>(find.byType(VerticalDivider));
+      expect(divider.color, AppTokens.line);
+
+      final listGround = t.widget<ColoredBox>(
+        find
+            .ancestor(
+              of: find.byKey(const ValueKey('list')),
+              matching: find.byType(ColoredBox),
+            )
+            .first,
+      );
+      expect(listGround.color, AppTokens.surface);
     });
 
     testWidgets('isWide reflects the breakpoint', (t) async {

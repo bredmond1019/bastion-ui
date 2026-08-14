@@ -13,6 +13,7 @@ import '../state/events_provider.dart' show needsInputProvider;
 import '../state/pane_provider.dart';
 import '../state/sessions_provider.dart' show bastionApiProvider;
 import '../widgets/approve_button_row.dart';
+import '../widgets/brand/brand.dart';
 import '../widgets/pane_view.dart';
 
 /// Live pane + quick-approve view for a single session.
@@ -83,8 +84,20 @@ class _SessionDetailScreenState extends ConsumerState<SessionDetailScreen> {
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Expanded(child: PaneView(lines: lines)),
-          const Divider(height: 1),
+          const Padding(
+            padding: EdgeInsets.fromLTRB(16, 16, 16, 8),
+            child: Eyebrow(label: 'Terminal'),
+          ),
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: PanelCard(child: PaneView(lines: lines)),
+            ),
+          ),
+          const Padding(
+            padding: EdgeInsets.fromLTRB(16, 12, 16, 4),
+            child: Eyebrow(label: 'Quick approve'),
+          ),
           ApproveButtonRow(sessionName: widget.sessionName),
           const Divider(height: 1),
           _SendBar(sessionName: widget.sessionName),

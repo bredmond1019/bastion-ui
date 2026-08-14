@@ -1,9 +1,13 @@
-// Widget tests for DashboardScreen + StatusBadge.
+// Widget tests for DashboardScreen.
 //
 // Overrides `reposProvider` and (per-repo) `repoWorkflowsProvider` directly
 // with fake StateNotifiers (no real socket/API involved) so these tests
 // exercise only the rendering + badge logic — mirrors the override style
 // established by `sessions_list_test.dart`.
+//
+// Re-skinned in `BU.10.C` task 4: the repo row's status now renders through
+// `StatusPill` (a labelled pill) rather than the icon-only `StatusBadge`, so
+// these tests assert on the pill's label text instead of a `find.byIcon`.
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -13,7 +17,8 @@ import 'package:bastion_ui/models/repo_status_dto.dart';
 import 'package:bastion_ui/screens/dashboard_screen.dart';
 import 'package:bastion_ui/state/repos_provider.dart';
 import 'package:bastion_ui/state/workflows_provider.dart';
-import 'package:bastion_ui/widgets/status_badge.dart';
+import 'package:bastion_ui/theme/app_theme.dart';
+import 'package:bastion_ui/widgets/brand/brand.dart';
 
 // ---------------------------------------------------------------------------
 // Fakes
@@ -73,7 +78,7 @@ Widget _buildScreen({
 
   return ProviderScope(
     overrides: overrides,
-    child: const MaterialApp(home: DashboardScreen()),
+    child: MaterialApp(theme: AppTheme.dark, home: const DashboardScreen()),
   );
 }
 
@@ -110,22 +115,22 @@ void main() {
 
       expect(find.text('alpha'), findsOneWidget);
       expect(find.text('beta'), findsOneWidget);
-      expect(find.byType(StatusBadge), findsNWidgets(2));
-      // alpha has a running workflow -> in-flight badge.
-      expect(find.byIcon(Icons.autorenew), findsOneWidget);
-      // beta has no running workflow but has_handoff -> handoff badge.
-      expect(find.byIcon(Icons.assignment_late), findsOneWidget);
+      expect(find.byType(StatusPill), findsNWidgets(2));
+      // alpha has a running workflow -> in-flight pill.
+      expect(find.text('IN FLIGHT'), findsOneWidget);
+      // beta has no running workflow but has_handoff -> handoff pill.
+      expect(find.text('HANDOFF'), findsOneWidget);
     });
 
     testWidgets('shows empty state when there are no repos', (tester) async {
       await tester.pumpWidget(_buildScreen(repos: const []));
       await tester.pump();
 
-      expect(find.byType(StatusBadge), findsNothing);
+      expect(find.byType(StatusPill), findsNothing);
       expect(find.text('No repos registered'), findsOneWidget);
     });
 
-    testWidgets('idle repo with no handoff shows the idle badge', (
+    testWidgets('idle repo with no handoff shows the idle pill', (
       tester,
     ) async {
       const repos = [
@@ -139,9 +144,9 @@ void main() {
       await tester.pumpWidget(_buildScreen(repos: repos));
       await tester.pump();
 
-      expect(find.byIcon(Icons.autorenew), findsNothing);
-      expect(find.byIcon(Icons.assignment_late), findsNothing);
-      expect(find.byType(CircleAvatar), findsOneWidget);
+      expect(find.text('IN FLIGHT'), findsNothing);
+      expect(find.text('HANDOFF'), findsNothing);
+      expect(find.text('IDLE'), findsOneWidget);
     });
 
     testWidgets(
@@ -171,14 +176,14 @@ void main() {
         );
         await tester.pump();
 
-        expect(find.byIcon(Icons.autorenew), findsOneWidget);
+        expect(find.text('IN FLIGHT'), findsOneWidget);
 
         // Simulate the `workflow_done` event triggering a refetch that
         // reports the workflow as no longer running.
         captured['alpha']!.markDone([_workflow(status: 'done')]);
         await tester.pump();
 
-        expect(find.byIcon(Icons.autorenew), findsNothing);
+        expect(find.text('IN FLIGHT'), findsNothing);
       },
     );
 
@@ -208,6 +213,7 @@ void main() {
         ProviderScope(
           overrides: overrides,
           child: MaterialApp(
+            theme: AppTheme.dark,
             home: const DashboardScreen(),
             onGenerateRoute: (settings) {
               pushedRoute = settings.name;

@@ -8,6 +8,8 @@ library;
 
 import 'package:flutter/material.dart';
 
+import '../theme/tokens.dart';
+
 class ResponsiveScaffold extends StatelessWidget {
   const ResponsiveScaffold({
     super.key,
@@ -31,16 +33,31 @@ class ResponsiveScaffold extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Phone width: the page ground (AppTokens.paper, set globally via
+    // AppTheme.dark.scaffoldBackgroundColor) already sits behind `list` via
+    // the caller's Scaffold, so there is nothing further to ground here.
     if (MediaQuery.sizeOf(context).width < breakpoint) {
       return list;
     }
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Expanded(flex: 2, child: list),
-        const VerticalDivider(width: 1),
-        Expanded(flex: 5, child: detail),
-      ],
+    // Tablet split: the list rail reads as a nav surface one ground step up
+    // from the page (AppTokens.surface), separated from the detail pane by
+    // an explicit AppTokens.line hairline — the ground ladder's "prefer a
+    // ground step over adding a hairline" rule still leaves this one
+    // hairline as the seam between two panes, not a stand-in for a ground
+    // step.
+    return Container(
+      color: AppTokens.paper,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Expanded(
+            flex: 2,
+            child: ColoredBox(color: AppTokens.surface, child: list),
+          ),
+          const VerticalDivider(width: 1, thickness: 1, color: AppTokens.line),
+          Expanded(flex: 5, child: detail),
+        ],
+      ),
     );
   }
 }

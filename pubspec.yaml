@@ -105,6 +105,7 @@ flutter:
 
   assets:
     - assets/icon/app_icon.png
+    - assets/icon/app_icon_foreground.png
 
   # Brand type trio (BU.10.A task1) — vendored OFL-licensed variable fonts, NOT the
   # google_fonts package: this app is tailnet-only, so a device off the tailnet must
@@ -138,10 +139,17 @@ flutter:
         - asset: assets/fonts/JetBrainsMono.ttf
           weight: 400
 
-# flutter_launcher_icons config (BU.4.A task5) — run `dart run flutter_launcher_icons`
-# to regenerate android/app/src/main/res/mipmap-* from the source asset below.
+# flutter_launcher_icons config (BU.10.C task7) — run `dart run flutter_launcher_icons`
+# to regenerate android/app/src/main/res/mipmap-* from the source assets below. The
+# source is the bastiel gem mark: assets/icon/app_icon.png (paper ground + gem, used
+# as the legacy/non-adaptive icon) plus an adaptive foreground/background pair —
+# assets/icon/app_icon_foreground.png (gem only, transparent) composited over
+# adaptive_icon_background (AppTokens.paper's hex, #06070F). ios stays false — this
+# is an Android-only Surface (Standing Rule 7 / CLAUDE.md).
 flutter_launcher_icons:
   android: true
   ios: false
   image_path: "assets/icon/app_icon.png"
   min_sdk_android: 21
+  adaptive_icon_background: "#06070F"
+  adaptive_icon_foreground: "assets/icon/app_icon_foreground.png"

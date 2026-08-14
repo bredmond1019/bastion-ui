@@ -6,6 +6,12 @@
 /// [_AgentStateChip]), and — when [needsInput] is true — a needs-input flag
 /// badge driven by `events_provider.dart`.
 ///
+/// Re-skinned in `BU.10.C` task 2: the card is now a [PanelCard] wearing a
+/// [GradientTopBar] whose hue cycles by [index] (`hueForIndex`) so adjacent
+/// cards in the list don't read identically — one gradient bar per panel,
+/// per the block's budget rule. The agent-state chip now renders through
+/// [StatusPill] rather than a bespoke container.
+///
 /// Purely presentational: does not read providers itself, so it stays easy
 /// to unit-test with plain constructor arguments.
 library;
@@ -15,18 +21,27 @@ import 'package:flutter/material.dart';
 import '../models/session_dto.dart';
 import '../theme/status_tones.dart';
 import '../theme/tokens.dart';
+import '../theme/typography.dart';
+import 'brand/brand.dart';
 
 /// A running/idle summary card for one [SessionDto].
 class SessionCard extends StatelessWidget {
   const SessionCard({
     super.key,
     required this.session,
+    this.index = 0,
     this.needsInput = false,
     this.onTap,
   });
 
   /// The session this card summarizes.
   final SessionDto session;
+
+  /// This card's position in the (sorted) sessions list, used to cycle the
+  /// [GradientTopBar]'s hue via `hueForIndex` so adjacent cards don't read
+  /// identically. Defaults to 0 (the first hue) for direct/unit-test
+  /// construction outside a list.
+  final int index;
 
   /// Whether a `needs_input` event is currently pending for this session
   /// (per `events_provider.dart`'s `needsInputProvider`).
@@ -40,28 +55,69 @@ class SessionCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-      child: ListTile(
-        onTap: onTap,
-        leading: _StateBadge(isRunning: _isRunning),
-        title: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Flexible(child: Text(session.name)),
-            if (session.agentState != AgentState.unknown) ...[
-              const SizedBox(width: 8),
-              _AgentStateChip(agentState: session.agentState),
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      child: PanelCard(
+        child: InkWell(
+          onTap: onTap,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Budget rule: one gradient bar per panel — this is it, no
+              // inner region gets a second one.
+              GradientTopBar(hue: hueForIndex(index)),
+              Padding(
+                padding: const EdgeInsets.all(16),
+                child: Row(
+                  children: [
+                    _StateBadge(isRunning: _isRunning),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Row(
+                            children: [
+                              Flexible(
+                                child: Text(
+                                  session.name,
+                                  style: AppTypography.textTheme.titleSmall
+                                      ?.copyWith(color: AppTokens.ink),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                              if (session.agentState != AgentState.unknown) ...[
+                                const SizedBox(width: 8),
+                                _AgentStateChip(agentState: session.agentState),
+                              ],
+                            ],
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            session.lastLine?.isNotEmpty == true
+                                ? session.lastLine!
+                                : ' ',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: AppTypography.mono.copyWith(
+                              color: AppTokens.inkSoft,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    if (needsInput) ...[
+                      const SizedBox(width: 8),
+                      const _NeedsInputBadge(),
+                    ],
+                  ],
+                ),
+              ),
             ],
-          ],
+          ),
         ),
-        subtitle: Text(
-          session.lastLine?.isNotEmpty == true ? session.lastLine! : ' ',
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: const TextStyle(fontFamily: 'monospace'),
-        ),
-        trailing: needsInput ? const _NeedsInputBadge() : null,
       ),
     );
   }
@@ -95,8 +151,10 @@ class _StateBadge extends StatelessWidget {
 /// the leading dot. [AgentState.unknown] renders no chip at all (handled by
 /// the caller) — an unknown state is noise, not signal.
 ///
-/// `blocked` carries the most visual weight (bold text, filled background):
-/// it is the state the operator most needs to act on.
+/// Renders through [StatusPill] (`BU.10.C` task 2), mapped onto the
+/// closest-fitting [StatusPillTone]: `blocked` maps 1:1 (the state the
+/// operator most needs to act on), `working` maps onto `inProgress`, and
+/// `idle` maps onto `onTrack` (nothing needs the operator).
 class _AgentStateChip extends StatelessWidget {
   const _AgentStateChip({required this.agentState});
 
@@ -115,43 +173,24 @@ class _AgentStateChip extends StatelessWidget {
     }
   }
 
-  StatusTone _tone(StatusTones tones) {
+  StatusPillTone get _tone {
     switch (agentState) {
       case AgentState.working:
-        return tones.info;
+        return StatusPillTone.inProgress;
       case AgentState.idle:
-        return tones.neutral;
+        return StatusPillTone.onTrack;
       case AgentState.blocked:
-        return tones.danger;
+        return StatusPillTone.blocked;
       case AgentState.unknown:
-        return tones.neutral;
+        return StatusPillTone.inProgress;
     }
   }
 
-  bool get _emphasized => agentState == AgentState.blocked;
-
   @override
   Widget build(BuildContext context) {
-    final tone = _tone(context.statusTones);
-    final color = tone.foreground;
     return Tooltip(
       message: 'Agent $_label',
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-        decoration: BoxDecoration(
-          color: _emphasized ? color : tone.background,
-          borderRadius: BorderRadius.circular(4),
-          border: _emphasized ? null : Border.all(color: tone.border, width: 1),
-        ),
-        child: Text(
-          _label,
-          style: TextStyle(
-            fontSize: 11,
-            fontWeight: _emphasized ? FontWeight.bold : FontWeight.w500,
-            color: _emphasized ? AppTokens.paper : color,
-          ),
-        ),
-      ),
+      child: StatusPill(tone: _tone, label: _label),
     );
   }
 }

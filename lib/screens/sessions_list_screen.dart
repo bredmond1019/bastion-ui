@@ -12,6 +12,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/session_dto.dart';
 import '../state/events_provider.dart';
 import '../state/sessions_provider.dart';
+import '../theme/tokens.dart';
+import '../theme/typography.dart';
+import '../widgets/brand/brand.dart';
 import '../widgets/responsive_scaffold.dart';
 import '../widgets/session_card.dart';
 import 'session_detail_screen.dart';
@@ -54,13 +57,11 @@ class SessionsListScreen extends ConsumerWidget {
       }
     }
 
-    final list = sessions.isEmpty
-        ? const Center(child: Text('No active sessions'))
-        : _SessionsListView(
-            sessions: sessions,
-            needsInput: needsInput,
-            onTap: onSessionTap,
-          );
+    final list = _SessionsListView(
+      sessions: sessions,
+      needsInput: needsInput,
+      onTap: onSessionTap,
+    );
 
     if (!isWide) {
       return Scaffold(
@@ -81,6 +82,11 @@ class SessionsListScreen extends ConsumerWidget {
   }
 }
 
+/// The sessions-list body: one [Eyebrow] section header (budget rule: one
+/// per section, never more), then either the empty state or the scrolling
+/// list of [SessionCard]s. Kept as its own widget (rather than inlined into
+/// [SessionsListScreen]'s build) so it renders identically for the phone
+/// route and the tablet split-view rail.
 class _SessionsListView extends StatelessWidget {
   const _SessionsListView({
     required this.sessions,
@@ -96,17 +102,38 @@ class _SessionsListView extends StatelessWidget {
   Widget build(BuildContext context) {
     final sorted = [...sessions]..sort((a, b) => a.name.compareTo(b.name));
 
-    return ListView.builder(
-      itemCount: sorted.length,
-      itemBuilder: (context, index) {
-        final session = sorted[index];
-        return SessionCard(
-          key: ValueKey(session.name),
-          session: session,
-          needsInput: needsInput.contains(session.name),
-          onTap: () => onTap(session),
-        );
-      },
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Padding(
+          padding: EdgeInsets.fromLTRB(16, 16, 16, 8),
+          child: Eyebrow(label: 'Sessions'),
+        ),
+        Expanded(
+          child: sorted.isEmpty
+              ? Center(
+                  child: Text(
+                    'No active sessions',
+                    style: AppTypography.textTheme.bodyMedium?.copyWith(
+                      color: AppTokens.inkFaint,
+                    ),
+                  ),
+                )
+              : ListView.builder(
+                  itemCount: sorted.length,
+                  itemBuilder: (context, index) {
+                    final session = sorted[index];
+                    return SessionCard(
+                      key: ValueKey(session.name),
+                      session: session,
+                      index: index,
+                      needsInput: needsInput.contains(session.name),
+                      onTap: () => onTap(session),
+                    );
+                  },
+                ),
+        ),
+      ],
     );
   }
 }

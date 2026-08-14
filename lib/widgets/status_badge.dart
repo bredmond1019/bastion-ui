@@ -31,6 +31,12 @@ class StatusBadge extends StatelessWidget {
   /// The state this badge renders.
   final RepoBadgeState state;
 
+  /// The shared glyph size every state renders at, so the badge occupies a
+  /// consistent footprint in a repo row regardless of which of the three
+  /// states is showing (previously the icon states defaulted to 24dp while
+  /// the idle dot rendered at a 12dp diameter).
+  static const double _glyphSize = 20;
+
   @override
   Widget build(BuildContext context) {
     final tones = context.statusTones;
@@ -38,18 +44,26 @@ class StatusBadge extends StatelessWidget {
       case RepoBadgeState.inFlight:
         return Tooltip(
           message: 'Workflow in flight',
-          child: Icon(Icons.autorenew, color: tones.info.foreground),
+          child: Icon(
+            Icons.autorenew,
+            color: tones.info.foreground,
+            size: _glyphSize,
+          ),
         );
       case RepoBadgeState.hasHandoff:
         return Tooltip(
           message: 'Handoff pending',
-          child: Icon(Icons.assignment_late, color: tones.warning.foreground),
+          child: Icon(
+            Icons.assignment_late,
+            color: tones.warning.foreground,
+            size: _glyphSize,
+          ),
         );
       case RepoBadgeState.idle:
         return Tooltip(
           message: 'Idle',
           child: CircleAvatar(
-            radius: 6,
+            radius: _glyphSize / 2,
             backgroundColor: tones.neutral.foreground,
           ),
         );

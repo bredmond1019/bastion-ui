@@ -13,6 +13,43 @@ timestamp: "2026-08-14T11:52:00Z"
 
 ## [run: 2026-08-14]
 
+`BU.10.C` (re-skin existing screens + brand app icon) closed — all 10 tasks passed, end-of-run
+review **PASS**. Tasks 1–5 re-skinned every screen and shared widget onto `AppTokens`/
+`AppTypography`/the `lib/widgets/brand/` primitives: `ResponsiveScaffold`/`ConnectionBanner`/
+`StatusBadge` (task 1), `SessionsListScreen`/`SessionCard` (task 2), `SessionDetailScreen`/
+`ApproveButtonRow` with `PaneView` wrapped in a `PanelCard` (task 3), the dashboard repo rows/
+`RepoDetailScreen`/`WorkflowProgress` (task 4), and `QuickActionsScreen`/`SettingsScreen`/
+`CommandInvokeSheet`/`MarkdownView` (task 5). Task 6 added `brand_coverage_test.dart` confirming
+every re-skinned screen renders at least one brand primitive, and a mechanical sweep found no
+remaining stock-Material/hex-literal leakage. Task 7 replaced the launcher icon with a generated
+bastiel gem-mark adaptive icon (faceted diamond in brand hues on `AppTokens.paper`), regenerating
+all Android mipmap/drawable densities via `flutter_launcher_icons`. Task 8 fixed a formatting-only
+Patrol test-bundle failure. Task 9 captured a fresh post-brand `visual_smoke/runs/2026-08-14_155931/`
+baseline (10 screens) against a real `bastion serve` on a Pixel_9 emulator, diffed screen-by-screen
+against the pre-brand baseline. Task 10 ran the full gating suite (format/analyze/test, all green)
+and — since task 8's worklog hadn't actually captured live Patrol device output — re-ran the Patrol
+smoke test live to produce the missing evidence for the spec's un-gateable acceptance criteria.
+Phase 10 (brand system) is now fully closed. Notable decisions: the tablet split-rail grounds list
+on `AppTokens.surface`/detail on `AppTokens.paper` (no separate nav-rail widget exists yet); agent
+state maps onto `StatusPillTone` as working→inProgress/idle→onTrack/blocked→blocked; `ListTile` was
+dropped in favor of a plain `Row` for dashboard/quick-action rows to avoid width-overflow inside a
+`StatusPill`-bearing row at tablet width. Next: Phase 11 (`BU.11.A` — serve-api v0.30 contract
+layer) or Phase 12, whichever the operator prioritizes next; the two operator gates
+(`bastion-ui-brand-signoff`, `bastion-ui-engine-api-key`) remain ahead of `BU.11.B`/`BU.12.A`.
+
+```
+696342d feat: implement 10.C-reskin-screens-icon-task9
+137e90e feat: implement 10.C-reskin-screens-icon-task8
+5e233a8 feat: implement 10.C-reskin-screens-icon-task7
+c0d120d feat: implement 10.C-reskin-screens-icon-task6
+467d802 feat: implement 10.C-reskin-screens-icon-task5
+113e2bc feat: implement 10.C-reskin-screens-icon-task4
+dbe067d feat: implement 10.C-reskin-screens-icon-task3
+c761eea feat: implement 10.C-reskin-screens-icon-task2
+```
+
+## [run: 2026-08-14]
+
 `BU.10.A` (design tokens + dark-only theme foundation) closed — all 7 tasks passed on the first
 attempt, end-of-run review **PASS**. Task 1 vendored the three OFL brand type families (Inter,
 Source Sans 3, JetBrains Mono) as variable-font TTFs via `pubspec.yaml` (not the `google_fonts`

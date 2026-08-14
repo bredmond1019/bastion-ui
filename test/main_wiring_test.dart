@@ -36,6 +36,7 @@ import 'package:bastion_ui/services/bastion_socket.dart';
 import 'package:bastion_ui/state/connection_provider.dart';
 import 'package:bastion_ui/state/sessions_provider.dart'
     show bastionApiProvider, bastionSocketProvider;
+import 'package:bastion_ui/theme/app_theme.dart';
 import 'package:bastion_ui/theme/tokens.dart';
 
 // ---------------------------------------------------------------------------
@@ -298,6 +299,7 @@ void main() {
             bastionApiProvider.overrideWith((ref) => api),
           ],
           child: MaterialApp(
+            theme: AppTheme.dark,
             home: const SessionsListScreen(),
             onGenerateRoute: _generateRoute,
           ),
@@ -348,6 +350,7 @@ void main() {
           bastionApiProvider.overrideWith((ref) => api),
         ],
         child: MaterialApp(
+          theme: AppTheme.dark,
           home: const DashboardScreen(),
           onGenerateRoute: _generateRoute,
         ),
@@ -400,6 +403,7 @@ void main() {
           secureStorageProvider.overrideWithValue(fakeStorage),
         ],
         child: MaterialApp(
+          theme: AppTheme.dark,
           home: const _TabsHarness(),
           onGenerateRoute: _generateRoute,
         ),
@@ -452,6 +456,7 @@ void main() {
             bastionApiProvider.overrideWith((ref) => api),
           ],
           child: MaterialApp(
+            theme: AppTheme.dark,
             home: const _TabsHarness(),
             onGenerateRoute: _generateRoute,
           ),
