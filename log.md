@@ -11,6 +11,44 @@ timestamp: "2026-08-14T11:52:00Z"
 
 ---
 
+## [run: 2026-08-14]
+
+`BU.10.A` (design tokens + dark-only theme foundation) closed — all 7 tasks passed on the first
+attempt, end-of-run review **PASS**. Task 1 vendored the three OFL brand type families (Inter,
+Source Sans 3, JetBrains Mono) as variable-font TTFs via `pubspec.yaml` (not the `google_fonts`
+package, per the tailnet-only constraint). Task 2 added `lib/theme/tokens.dart` (`AppTokens`:
+cool-aurora palette, radius ladder, glow values, alpha helper). Task 3 added the `StatusTones`
+`ThemeExtension` (six semantic tones — neutral/info/active/success/warning/danger — each with
+foreground/background/border) with safe `ThemeData`/`BuildContext` fallback accessors. Task 4 added
+`lib/theme/typography.dart` (`AppTypography.textTheme`: Inter for display/headline/title, Source
+Sans 3 for body/label, JetBrains Mono for mono/labels). Task 5 replaced `ColorScheme.fromSeed` with
+a single explicit `AppTheme.dark` built from tokens/tones/typography, wired `main.dart` to
+`ThemeMode.dark` and dropped `darkTheme`/`ThemeMode.system`. Task 6 migrated the four widgets that
+hardcoded `Color(0x...)` literals (`connection_banner`, `session_card`, `status_badge`,
+`pane_view`) to read `StatusTones`/`AppTokens` instead, adding a guard test enforcing zero such
+literals remain outside `lib/theme/`. Task 7 validated the full gating suite with no further code
+changes. Notable decisions: `AppTheme.dark` is a cached `static final` (not a getter) because
+`NavigationBarThemeData`'s `WidgetStateProperty.resolveWith` closures break `==` equality across
+rebuilt `ThemeData` instances; `ConnectionBanner` and the emphasized agent-state chip use a tone's
+solid `foreground` as background with `AppTokens.paper` text (rather than the tone's own
+low-alpha `background`/`border`) for contrast on a full-bleed strip. `test/widget_test.dart` was
+updated (outside task 5's listed files) because it referenced the now-deleted
+`AppTheme.light`/`ThemeMode.system` wiring. Next: `BU.10.B` (brand primitive widget kit, ported
+from `bastion-web/components/ui/brand.tsx`).
+
+```
+957dbb5 docs: update docs for 10.A-design-tokens-theme
+7c55986 feat: implement 10.A-design-tokens-theme-task6
+e19ad5c feat: implement 10.A-design-tokens-theme-task5
+f242d6d feat: implement 10.A-design-tokens-theme-task4
+8c9cb6c feat: implement 10.A-design-tokens-theme-task3
+570ae94 feat: implement 10.A-design-tokens-theme-task2
+6b7e2a5 feat: implement 10.A-design-tokens-theme-task1
+660dec6 feat: implement ticket-needs-input-badge-clear-task3
+```
+
+---
+
 ## [2026-08-14] (3)
 
 ### Phases 10–12 registered — brand + operator surfaces roadmap, Wave 0 and 5 specs
