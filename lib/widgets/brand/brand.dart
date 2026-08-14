@@ -7,4 +7,5 @@
 /// `tasks.md` Notes section).
 library;
 
+export 'gradient_top_bar.dart';
 export 'panel_card.dart';
