@@ -36,8 +36,13 @@ in the images, and the manifest is how you tell them apart.
 1. Boot the target device/emulator and a real `bastion serve` (see
    `patrol_test/smoke_test.dart`'s header for the harness pattern — same real
    backend, no mocks).
-2. Install the debug APK (`flutter build apk --debug && adb install -r
-   build/app/outputs/flutter-apk/app-debug.apk`).
+2. **If the device/emulator ever ran a Patrol test, rebuild the APK explicitly
+   before capturing** — `flutter build apk --debug -t lib/main.dart`. A leftover
+   `app-debug.apk` from a Patrol run has `patrol_test/test_bundle.dart` as its
+   entrypoint instead of `lib/main.dart`; installing and launching it hangs on
+   the splash screen waiting for a Patrol instrumentation server that isn't
+   attached (run-record finding F6 — this already cost a debug cycle once).
+   Install with `adb install -r build/app/outputs/flutter-apk/app-debug.apk`.
 3. Drive the same screen sequence as the existing runs (see any prior
    `manifest.md`'s Screens table for the canonical list) via `adb shell input
    tap/text` — read exact tap coordinates from `adb shell uiautomator dump`
