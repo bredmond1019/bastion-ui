@@ -50,105 +50,97 @@ void main() {
       harness = null;
     });
 
-    test(
-      'GET /api/sessions and the sessions WS push both carry a '
-      'contract-valid agentState',
-      () async {
-        harness = await BastionServeHarness.start();
-        final h = harness;
-        if (h == null) {
-          const whereChecked =
-              'checked BASTION_BIN, ../bastion/target/release/bastion, '
-              '../bastion/target/debug/bastion';
-          if (bastionE2eRequireBinary()) {
-            fail(
-              '$bastionE2eRequireEnvVar is set but no bastion binary could '
-              'be located ($whereChecked) — build one with '
-              '`cargo build -p bastion` in ../bastion, or set BASTION_BIN.',
-            );
-          }
-          markTestSkipped(
-            'no bastion binary found ($whereChecked) — skipping '
-            'session agent_state e2e (set $bastionE2eRequireEnvVar=1 to '
-            'make this a hard failure instead)',
+    test('GET /api/sessions and the sessions WS push both carry a '
+        'contract-valid agentState', () async {
+      harness = await BastionServeHarness.start();
+      final h = harness;
+      if (h == null) {
+        const whereChecked =
+            'checked BASTION_BIN, ../bastion/target/release/bastion, '
+            '../bastion/target/debug/bastion';
+        if (bastionE2eRequireBinary()) {
+          fail(
+            '$bastionE2eRequireEnvVar is set but no bastion binary could '
+            'be located ($whereChecked) — build one with '
+            '`cargo build -p bastion` in ../bastion, or set BASTION_BIN.',
           );
-          return;
         }
-
-        if (!tmuxAvailable()) {
-          markTestSkipped(
-            'tmux not on PATH — skipping session agent_state e2e (needs a '
-            'real tmux-backed session)',
-          );
-          return;
-        }
-
-        final api = BastionApi(host: h.host, port: h.port, token: h.token);
-        final socket = BastionSocket(
-          host: h.host,
-          port: h.port,
-          token: h.token,
+        markTestSkipped(
+          'no bastion binary found ($whereChecked) — skipping '
+          'session agent_state e2e (set $bastionE2eRequireEnvVar=1 to '
+          'make this a hard failure instead)',
         );
-        try {
-          await withManagedSession(api, (name) async {
-            // --- REST transport -------------------------------------------
-            final sessions = await api.getSessions();
+        return;
+      }
+
+      if (!tmuxAvailable()) {
+        markTestSkipped(
+          'tmux not on PATH — skipping session agent_state e2e (needs a '
+          'real tmux-backed session)',
+        );
+        return;
+      }
+
+      final api = BastionApi(host: h.host, port: h.port, token: h.token);
+      final socket = BastionSocket(host: h.host, port: h.port, token: h.token);
+      try {
+        await withManagedSession(api, (name) async {
+          // --- REST transport -------------------------------------------
+          final sessions = await api.getSessions();
+          expect(
+            sessions.any((s) => s.name == name),
+            isTrue,
+            reason:
+                'expected the created session "$name" to appear in '
+                'GET /api/sessions',
+          );
+          for (final session in sessions) {
             expect(
-              sessions.any((s) => s.name == name),
+              _contractStates.contains(session.agentState),
               isTrue,
               reason:
-                  'expected the created session "$name" to appear in '
-                  'GET /api/sessions',
+                  'session "${session.name}" agentState '
+                  '(${session.agentState}) is outside the four-value '
+                  'serve-api v0.26 §10.3 contract vocabulary',
             );
-            for (final session in sessions) {
-              expect(
-                _contractStates.contains(session.agentState),
-                isTrue,
-                reason:
-                    'session "${session.name}" agentState '
-                    '(${session.agentState}) is outside the four-value '
-                    'serve-api v0.26 §10.3 contract vocabulary',
-              );
-            }
+          }
 
-            // --- WebSocket transport ----------------------------------------
-            final connected = awaitStatus(
-              socket,
-              ConnectionStatus.connected,
-              timeout: const Duration(seconds: 10),
-            );
-            socket.connect();
-            await connected;
-            expect(socket.status, ConnectionStatus.connected);
+          // --- WebSocket transport ----------------------------------------
+          final connected = awaitStatus(
+            socket,
+            ConnectionStatus.connected,
+            timeout: const Duration(seconds: 10),
+          );
+          socket.connect();
+          await connected;
+          expect(socket.status, ConnectionStatus.connected);
 
-            final frames = await subscribeAndCollect(
-              socket,
-              topic: 'sessions',
-              count: 1,
-              timeout: const Duration(seconds: 20),
+          final frames = await subscribeAndCollect(
+            socket,
+            topic: 'sessions',
+            count: 1,
+            timeout: const Duration(seconds: 20),
+          );
+          expect(frames, hasLength(1));
+          final pushed = frames.single;
+          expect(pushed, isA<SessionsFrame>());
+          final pushedSessions = (pushed as SessionsFrame).sessions;
+          for (final session in pushedSessions) {
+            expect(
+              _contractStates.contains(session.agentState),
+              isTrue,
+              reason:
+                  'WS-pushed session "${session.name}" agentState '
+                  '(${session.agentState}) is outside the four-value '
+                  'serve-api v0.26 §10.3 contract vocabulary — decode '
+                  'regression on the push path',
             );
-            expect(frames, hasLength(1));
-            final pushed = frames.single;
-            expect(pushed, isA<SessionsFrame>());
-            final pushedSessions = (pushed as SessionsFrame).sessions;
-            for (final session in pushedSessions) {
-              expect(
-                _contractStates.contains(session.agentState),
-                isTrue,
-                reason:
-                    'WS-pushed session "${session.name}" agentState '
-                    '(${session.agentState}) is outside the four-value '
-                    'serve-api v0.26 §10.3 contract vocabulary — decode '
-                    'regression on the push path',
-              );
-            }
-          }, name: 'bu-agent-state-e2e');
-        } finally {
-          await socket.dispose();
-          api.dispose();
-        }
-      },
-      timeout: const Timeout(Duration(seconds: 90)),
-    );
+          }
+        }, name: 'bu-agent-state-e2e');
+      } finally {
+        await socket.dispose();
+        api.dispose();
+      }
+    }, timeout: const Timeout(Duration(seconds: 90)));
   });
 }
