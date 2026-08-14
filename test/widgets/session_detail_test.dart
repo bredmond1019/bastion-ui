@@ -17,6 +17,9 @@ import 'package:bastion_ui/services/bastion_api.dart';
 import 'package:bastion_ui/services/bastion_socket.dart';
 import 'package:bastion_ui/state/sessions_provider.dart'
     show bastionApiProvider, bastionSocketProvider;
+import 'package:bastion_ui/theme/app_theme.dart';
+import 'package:bastion_ui/theme/tokens.dart';
+import 'package:bastion_ui/widgets/brand/brand.dart';
 
 // ---------------------------------------------------------------------------
 // Fakes (mirrors pane_provider_test.dart / api_test.dart fixtures)
@@ -180,6 +183,7 @@ void main() {
         UncontrolledProviderScope(
           container: parentContainer,
           child: MaterialApp(
+            theme: AppTheme.dark,
             home: SessionDetailScreen(sessionName: sessionName),
           ),
         ),
@@ -297,5 +301,46 @@ void main() {
       );
       expect(field.controller!.text, isEmpty);
     });
+
+    testWidgets('renders brand primitives: an Eyebrow per section and the pane '
+        'wrapped in a PanelCard', (tester) async {
+      httpTransport.setResponse(
+        statusCode: 200,
+        body: {'session_name': 'alpha', 'lines': <String>[]},
+      );
+
+      await pumpScreen(tester, sessionName: 'alpha');
+
+      expect(find.byType(Eyebrow), findsNWidgets(2));
+      expect(find.text('TERMINAL'), findsOneWidget);
+      expect(find.text('QUICK APPROVE'), findsOneWidget);
+      expect(find.byType(PanelCard), findsOneWidget);
+    });
+
+    testWidgets(
+      'the deny ("Esc") button is destructive-toned and the affirmative '
+      'buttons are primary-toned, both from AppTokens',
+      (tester) async {
+        httpTransport.setResponse(
+          statusCode: 200,
+          body: {'session_name': 'alpha', 'lines': <String>[]},
+        );
+
+        await pumpScreen(tester, sessionName: 'alpha');
+
+        final escButton = tester.widget<OutlinedButton>(
+          find.byKey(const ValueKey('approve-Esc')),
+        );
+        expect(
+          escButton.style?.foregroundColor?.resolve({}),
+          AppTokens.destructive,
+        );
+
+        final yButton = tester.widget<OutlinedButton>(
+          find.byKey(const ValueKey('approve-y')),
+        );
+        expect(yButton.style?.foregroundColor?.resolve({}), AppTokens.primary);
+      },
+    );
   });
 }

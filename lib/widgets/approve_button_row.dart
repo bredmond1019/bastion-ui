@@ -17,6 +17,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../services/bastion_api.dart';
 import '../state/sessions_provider.dart' show bastionApiProvider;
+import '../theme/tokens.dart';
 
 /// One quick-approve button definition.
 class ApproveKey {
@@ -76,6 +77,12 @@ class ApproveButtonRow extends ConsumerWidget {
     }
   }
 
+  /// `Esc` is the one dismiss/deny action in [approveKeys] — it takes the
+  /// destructive token colour; every other key is an affirmative send and
+  /// takes the primary token colour. Both come from [AppTokens], never a
+  /// raw `Colors.*` literal.
+  static bool _isDeny(ApproveKey approveKey) => approveKey.label == 'Esc';
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     return Padding(
@@ -87,6 +94,16 @@ class ApproveButtonRow extends ConsumerWidget {
           for (final approveKey in approveKeys)
             OutlinedButton(
               key: ValueKey('approve-${approveKey.label}'),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: _isDeny(approveKey)
+                    ? AppTokens.destructive
+                    : AppTokens.primary,
+                side: BorderSide(
+                  color: _isDeny(approveKey)
+                      ? AppTokens.destructive
+                      : AppTokens.primary,
+                ),
+              ),
               onPressed: () => _handleTap(context, ref, approveKey),
               child: Text(approveKey.label),
             ),
