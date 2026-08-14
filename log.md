@@ -2,7 +2,7 @@
 type: Log
 title: BastionUI Development Log
 description: Chronological log of work completed for BastionUI.
-timestamp: "2026-08-14T09:18:03Z"
+timestamp: "2026-08-14T10:57:29Z"
 ---
 
 # Log — BastionUI
@@ -10,6 +10,30 @@ timestamp: "2026-08-14T09:18:03Z"
 *Append-only working log. One dated entry per session. Newest entries at the top.*
 
 ---
+
+## [2026-08-14] (2)
+
+### Patrol wired into the harness as a non-gating, manual-only check
+
+- **What:** Registered `patrol-visual-smoke` in `planning/harness.json`'s `validation.checks[]`
+  (`gates: false`), driven by a new `scripts/run_patrol_smoke.sh`. The script self-skips (exit 0)
+  when there's no attached Android device/emulator or no built `bastion` binary; otherwise it
+  starts a real `bastion serve` on `:4317` (reusing one already running there), runs
+  `patrol_test/smoke_test.dart` against it, and tears the server down on exit if it started it.
+  Verified end-to-end: ran clean (12/12 steps pass, server auto-started and cleanly torn down) and
+  self-skip verified separately (no device → `SKIPPED`, exit 0). Deliberately **not** wired through
+  `harness.json`'s `uiTest` field — that's `playwright-cli`/web-specific mechanism baked into
+  `sdlc-run.js`'s UI Test stage, not a generic hook, so extending it for Patrol would mean editing
+  the engine for stack reasons (against this project's own standing rule). Recorded as
+  `planning/decisions/D3-patrol-non-gating-harness-check.md`. Resolved and removed the
+  `patrol-harness-adoption-undecided` carryover entry.
+- **Why:** User asked for parity with how Playwright is wired into the harness for Next.js apps,
+  then clarified it must never run automatically on every task (development-time cost) — `gates:
+  false` under this project's `testDepth=fast` default means the SDLC engines never invoke it
+  per-task or on the terminal reconcile pass; it only runs when a human or agent calls it
+  deliberately, same trust level as the existing `e2e-serve-contract` check.
+- **Refs:** `scripts/run_patrol_smoke.sh`, `planning/harness.json`,
+  `planning/decisions/D3-patrol-non-gating-harness-check.md`.
 
 ## [2026-08-14]
 
