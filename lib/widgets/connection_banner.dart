@@ -14,7 +14,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../screens/settings_screen.dart';
 import '../state/connection_provider.dart';
 import '../theme/status_tones.dart';
-import '../theme/tokens.dart';
 
 /// A slim coloured banner that reflects the live [ConnectionStatus].
 ///
@@ -46,12 +45,14 @@ class _BannerStrip extends StatelessWidget {
   Widget build(BuildContext context) {
     final tones = context.statusTones;
     final appearance = _appearance(status, tones);
-    // The banner is a solid full-bleed strip (unlike a StatusTone chip's
-    // low-alpha fill), so it uses the tone's foreground hue as a saturated
-    // background with AppTokens.paper text/icons for contrast — the same
-    // "onPrimary" pattern AppTheme.dark uses for its ColorScheme.
-    final background = appearance.tone.foreground;
-    final foreground = AppTokens.paper;
+    // Same composition StatusPill uses (lib/widgets/brand/status_pill.dart):
+    // the tone's low-alpha `background` as the ground, `foreground` for
+    // text/icon, and `border` as the hairline. This keeps the banner on the
+    // ground ladder (paper -> surface -> surfaceMuted -> line) instead of
+    // filling the bar with a saturated "onPrimary" accent (F4).
+    final background = appearance.tone.background;
+    final foreground = appearance.tone.foreground;
+    final border = appearance.tone.border;
 
     return Material(
       color: background,
@@ -61,39 +62,44 @@ class _BannerStrip extends StatelessWidget {
             MaterialPageRoute<void>(builder: (_) => const SettingsScreen()),
           );
         },
-        child: SafeArea(
-          top: false,
-          bottom: false,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-            child: Row(
-              children: [
-                Icon(appearance.icon, color: foreground, size: 16),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        appearance.label,
-                        style: Theme.of(
-                          context,
-                        ).textTheme.labelLarge?.copyWith(color: foreground),
-                      ),
-                      if (appearance.subtitle != null)
+        child: Container(
+          decoration: BoxDecoration(
+            border: Border(bottom: BorderSide(color: border, width: 1)),
+          ),
+          child: SafeArea(
+            top: false,
+            bottom: false,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+              child: Row(
+                children: [
+                  Icon(appearance.icon, color: foreground, size: 16),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
                         Text(
-                          appearance.subtitle!,
+                          appearance.label,
                           style: Theme.of(
                             context,
-                          ).textTheme.bodySmall?.copyWith(color: foreground),
+                          ).textTheme.labelLarge?.copyWith(color: foreground),
                         ),
-                    ],
+                        if (appearance.subtitle != null)
+                          Text(
+                            appearance.subtitle!,
+                            style: Theme.of(
+                              context,
+                            ).textTheme.bodySmall?.copyWith(color: foreground),
+                          ),
+                      ],
+                    ),
                   ),
-                ),
-                if (appearance.showAction)
-                  Icon(Icons.chevron_right, color: foreground, size: 18),
-              ],
+                  if (appearance.showAction)
+                    Icon(Icons.chevron_right, color: foreground, size: 18),
+                ],
+              ),
             ),
           ),
         ),
