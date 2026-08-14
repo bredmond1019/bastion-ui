@@ -77,21 +77,16 @@ class _BannerStrip extends StatelessWidget {
                     children: [
                       Text(
                         appearance.label,
-                        style: TextStyle(
-                          color: foreground,
-                          fontSize: 13,
-                          fontWeight: FontWeight.w500,
-                          decoration: TextDecoration.none,
-                        ),
+                        style: Theme.of(
+                          context,
+                        ).textTheme.labelLarge?.copyWith(color: foreground),
                       ),
                       if (appearance.subtitle != null)
                         Text(
                           appearance.subtitle!,
-                          style: TextStyle(
-                            color: foreground,
-                            fontSize: 11,
-                            decoration: TextDecoration.none,
-                          ),
+                          style: Theme.of(
+                            context,
+                          ).textTheme.bodySmall?.copyWith(color: foreground),
                         ),
                     ],
                   ),

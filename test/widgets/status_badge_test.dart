@@ -48,6 +48,24 @@ void main() {
       expect(find.byTooltip('Idle'), findsOneWidget);
     });
 
+    testWidgets('all three states render at the same 20dp glyph footprint', (
+      tester,
+    ) async {
+      await tester.pumpWidget(_buildBadge(RepoBadgeState.inFlight));
+      final inFlightIcon = tester.widget<Icon>(find.byIcon(Icons.autorenew));
+      expect(inFlightIcon.size, 20);
+
+      await tester.pumpWidget(_buildBadge(RepoBadgeState.hasHandoff));
+      final handoffIcon = tester.widget<Icon>(
+        find.byIcon(Icons.assignment_late),
+      );
+      expect(handoffIcon.size, 20);
+
+      await tester.pumpWidget(_buildBadge(RepoBadgeState.idle));
+      final avatar = tester.widget<CircleAvatar>(find.byType(CircleAvatar));
+      expect(avatar.radius, 10);
+    });
+
     testWidgets('falls back to StatusTones.dark when no theme extension is '
         'registered', (tester) async {
       await tester.pumpWidget(

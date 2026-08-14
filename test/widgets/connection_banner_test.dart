@@ -118,6 +118,22 @@ void main() {
       },
     );
 
+    testWidgets(
+      'label text style comes from the ambient TextTheme, not a literal',
+      (tester) async {
+        await tester.pumpWidget(_buildBanner(ConnectionStatus.connected));
+
+        final label = tester.widget<Text>(find.text('Connected'));
+        final context = tester.element(find.text('Connected'));
+        final expected = Theme.of(context).textTheme.labelLarge?.copyWith(
+          color: StatusTones.dark.active.foreground,
+        );
+
+        expect(label.style?.fontFamily, expected?.fontFamily);
+        expect(label.style?.fontWeight, expected?.fontWeight);
+      },
+    );
+
     testWidgets('tapping the banner opens SettingsScreen', (tester) async {
       await tester.pumpWidget(_buildBanner(ConnectionStatus.disconnected));
 
