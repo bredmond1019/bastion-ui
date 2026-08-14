@@ -8,4 +8,5 @@
 library;
 
 export 'gradient_top_bar.dart';
+export 'icon_tile.dart';
 export 'panel_card.dart';
