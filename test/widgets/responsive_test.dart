@@ -25,9 +25,12 @@ void main() {
       );
       expect(find.byKey(const ValueKey('list')), findsOneWidget);
       expect(find.byKey(const ValueKey('detail')), findsNothing);
-      // Phone presentation: the lockup rides in a real AppBar.
-      expect(find.byType(BastielLockup), findsOneWidget);
-      expect(find.byType(AppBar), findsOneWidget);
+      // ResponsiveScaffold is used as a `body:`, so it must NOT introduce an
+      // app bar or a lockup of its own — either would render *below*
+      // HomeShell's real AppBar and only on the one tab that uses this
+      // widget. The lockup belongs in HomeShell (see main.dart).
+      expect(find.byType(BastielLockup), findsNothing);
+      expect(find.byType(AppBar), findsNothing);
     });
 
     testWidgets('tablet width (>= breakpoint) shows list and detail', (
@@ -54,20 +57,9 @@ void main() {
       );
       expect(listGround.color, AppTokens.surface);
 
-      // Tablet presentation: the lockup is the rail's header, above `list`.
-      expect(find.byType(BastielLockup), findsOneWidget);
-      expect(
-        find.descendant(
-          of: find
-              .ancestor(
-                of: find.byKey(const ValueKey('list')),
-                matching: find.byType(ColoredBox),
-              )
-              .first,
-          matching: find.byType(BastielLockup),
-        ),
-        findsOneWidget,
-      );
+      // Same rule at tablet width: no second lockup on the rail — HomeShell's
+      // AppBar already carries the one the operator sees.
+      expect(find.byType(BastielLockup), findsNothing);
     });
 
     testWidgets('isWide reflects the breakpoint', (t) async {

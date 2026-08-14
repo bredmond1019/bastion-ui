@@ -27,6 +27,7 @@ import 'state/sessions_provider.dart'
     show bastionApiProvider, bastionSocketProvider;
 import 'state/workflows_provider.dart' show workflowDoneEventsProvider;
 import 'theme/app_theme.dart';
+import 'widgets/brand/brand.dart';
 import 'widgets/connection_banner.dart';
 
 Future<void> main() async {
@@ -195,7 +196,14 @@ class _HomeShellState extends ConsumerState<HomeShell> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('BastionUI'),
+        // The bastiel lockup lives HERE, in HomeShell's own AppBar, because
+        // this is the one app bar that is always visible — on every tab and
+        // at every width. ResponsiveScaffold is used as a `body:` (see
+        // sessions_list_screen.dart), so a lockup placed there would render
+        // *below* this bar on the Sessions tab and not at all on Dashboard
+        // or Actions. Same class of miss as BU.1.A: built, but not on the
+        // path that actually renders.
+        title: const BastielLockup(),
         actions: [
           IconButton(
             icon: const Icon(Icons.settings),

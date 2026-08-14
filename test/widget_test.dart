@@ -12,6 +12,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:bastion_ui/main.dart';
 import 'package:bastion_ui/state/connection_provider.dart';
+import 'package:bastion_ui/widgets/brand/brand.dart';
 import 'package:bastion_ui/theme/app_theme.dart';
 import 'package:bastion_ui/widgets/connection_banner.dart';
 
@@ -24,9 +25,13 @@ void main() {
     // empty host — no platform-channel calls are made during this test.
     await tester.pumpWidget(const ProviderScope(child: BastionApp()));
 
-    // The home scaffold and AppBar title should render without error.
+    // The home scaffold and AppBar should render without error. The AppBar's
+    // title is the bastiel lockup, not plain "BastionUI" text — see
+    // test/widgets/home_shell_lockup_test.dart for why that placement is
+    // pinned (it regressed once by living in ResponsiveScaffold instead).
     expect(find.byType(Scaffold), findsAtLeastNWidgets(1));
-    expect(find.text('BastionUI'), findsOneWidget);
+    expect(find.byType(BastielLockup), findsOneWidget);
+    expect(find.text('BastionUI'), findsNothing);
   });
 
   testWidgets(
