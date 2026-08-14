@@ -11,3 +11,4 @@
 library;
 
 export 'age_chip.dart';
+export 'stat_tile.dart';
