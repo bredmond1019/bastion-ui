@@ -123,6 +123,33 @@ FakeHttpTransport _makeHttpTransport() {
     status: 200,
     body: <dynamic>[],
   );
+  // `BU.13.D` task 3: the rebuilt DashboardScreen reads `briefingBoardProvider`
+  // (`GET /api/board`), which `BriefingScreen` (also eagerly built inside
+  // the shared `IndexedStack`) already needed registered.
+  t.on(
+    'GET',
+    '/api/board',
+    status: 200,
+    body: {
+      'scope': 'hq',
+      'lanes': <String, dynamic>{},
+      'repos': [
+        {
+          'repo': 'bastion-ui',
+          'lanes': {
+            'now': [
+              {
+                'id': 'BU.1.A',
+                'title': 'Wiring briefing',
+                'repo': 'bastion-ui',
+              },
+            ],
+          },
+        },
+      ],
+      'stale': false,
+    },
+  );
   return t;
 }
 
