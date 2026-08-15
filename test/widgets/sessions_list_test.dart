@@ -21,6 +21,8 @@ import 'package:bastion_ui/state/sessions_provider.dart';
 import 'package:bastion_ui/theme/status_tones.dart';
 import 'package:bastion_ui/widgets/session_card.dart';
 
+import '../support/fake_http_transport.dart';
+
 // ---------------------------------------------------------------------------
 // Fakes
 // ---------------------------------------------------------------------------
@@ -63,30 +65,23 @@ class _FakeWsTransport implements WsTransport {
   }
 }
 
-/// Serves `getPane` -> a one-line buffer for any session, so an embedded
-/// `SessionDetailScreen` (tablet split pane) has content and no live
-/// network/socket is touched.
-class _FakeHttpTransport implements HttpTransport {
-  @override
-  Future<({int statusCode, String body})> get(
-    String url, {
-    Map<String, String> headers = const {},
-  }) async {
-    return (statusCode: 200, body: '{"session_name":"alpha","lines":["hi"]}');
-  }
-
-  @override
-  Future<({int statusCode, String body})> post(
-    String url, {
-    Map<String, String> headers = const {},
-    String? body,
-  }) async => (statusCode: 204, body: '');
-
-  @override
-  Future<({int statusCode, String body})> delete(
-    String url, {
-    Map<String, String> headers = const {},
-  }) async => (statusCode: 204, body: '');
+/// Builds a [FakeHttpTransport] that serves `getPane` -> a one-line buffer
+/// for `alpha`, so an embedded `SessionDetailScreen` (tablet split pane) has
+/// content and no live network/socket is touched. The two tests that use
+/// this only ever open the `alpha` session, so only that route is
+/// registered.
+FakeHttpTransport _buildFakeHttpTransport() {
+  final transport = FakeHttpTransport();
+  transport.on(
+    'GET',
+    '/api/sessions/alpha/pane',
+    status: 200,
+    body: {
+      'session_name': 'alpha',
+      'lines': ['hi'],
+    },
+  );
+  return transport;
 }
 
 Widget _buildScreen({
@@ -220,7 +215,7 @@ void main() {
           host: 'test-host',
           port: 4317,
           token: 'test-token',
-          transport: _FakeHttpTransport(),
+          transport: _buildFakeHttpTransport(),
         );
         addTearDown(api.dispose);
         final socket = BastionSocket(
@@ -346,7 +341,7 @@ void main() {
           host: 'test-host',
           port: 4317,
           token: 'test-token',
-          transport: _FakeHttpTransport(),
+          transport: _buildFakeHttpTransport(),
         );
         addTearDown(api.dispose);
         final socket = BastionSocket(
