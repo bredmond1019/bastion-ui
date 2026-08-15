@@ -19,6 +19,8 @@ import 'package:bastion_ui/state/events_provider.dart' show needsInputProvider;
 import 'package:bastion_ui/state/sessions_provider.dart'
     show bastionApiProvider, bastionSocketProvider;
 
+import '../support/fake_http_transport.dart';
+
 // ---------------------------------------------------------------------------
 // Fakes (mirrors session_detail_test.dart's fixtures)
 // ---------------------------------------------------------------------------
@@ -48,40 +50,16 @@ class FakeWsTransport implements WsTransport {
   }
 }
 
-final class FakeHttpTransport implements HttpTransport {
-  final List<({String method, String url, String? body})> calls = [];
-
-  @override
-  Future<({int statusCode, String body})> get(
-    String url, {
-    Map<String, String> headers = const {},
-  }) async {
-    calls.add((method: 'GET', url: url, body: null));
-    final session = url.split('/api/sessions/')[1].split('/pane')[0];
-    return (
-      statusCode: 200,
-      body: jsonEncode({'session_name': session, 'lines': <String>[]}),
-    );
-  }
-
-  @override
-  Future<({int statusCode, String body})> post(
-    String url, {
-    Map<String, String> headers = const {},
-    String? body,
-  }) async {
-    calls.add((method: 'POST', url: url, body: body));
-    return (statusCode: 204, body: '');
-  }
-
-  @override
-  Future<({int statusCode, String body})> delete(
-    String url, {
-    Map<String, String> headers = const {},
-  }) async {
-    calls.add((method: 'DELETE', url: url, body: null));
-    return (statusCode: 204, body: '');
-  }
+/// Registers a `GET .../pane` route for [session] that echoes it back,
+/// mirroring what the old local `FakeHttpTransport.get()` computed
+/// dynamically from the request URL.
+void registerPane(FakeHttpTransport transport, String session) {
+  transport.on(
+    'GET',
+    '/api/sessions/$session/pane',
+    status: 200,
+    body: {'session_name': session, 'lines': <String>[]},
+  );
 }
 
 String eventFrameJson(String session, String event) => jsonEncode({
@@ -130,6 +108,8 @@ void main() {
 
     setUp(() {
       httpTransport = FakeHttpTransport();
+      registerPane(httpTransport, 'alpha');
+      registerPane(httpTransport, 'beta');
       api = BastionApi(
         host: 'test-host',
         port: 4317,
@@ -214,6 +194,10 @@ void main() {
 
     setUp(() {
       httpTransport = FakeHttpTransport();
+      registerPane(httpTransport, 'alpha');
+      registerPane(httpTransport, 'beta');
+      registerPane(httpTransport, 'gamma');
+      registerPane(httpTransport, 'never-flagged');
       api = BastionApi(
         host: 'test-host',
         port: 4317,
