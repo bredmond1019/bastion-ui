@@ -18,6 +18,7 @@ import '../models/board_dto.dart';
 import '../models/docs_dto.dart';
 import '../models/dto.dart';
 import '../models/repo_status_dto.dart';
+import '../models/run_dto.dart';
 import '../models/session_dto.dart';
 
 // ---------------------------------------------------------------------------
@@ -547,6 +548,44 @@ final class BastionApi {
     final url = _withQuery('$_baseUrl/api/docs/$encodedRepo/file', params);
     final result = await _transport.get(url, headers: _defaultHeaders);
     return _decode(result.statusCode, result.body, DocFileDto.fromJson);
+  }
+
+  // -------------------------------------------------------------------------
+  // Live runs read surface (v0.16 / v0.17 / v0.22) — serve-api.md §14
+  // -------------------------------------------------------------------------
+  //
+  // BEARER AUTH ONLY, like the block above — never the engine `X-API-Key`
+  // (that key is BU.12.A/D/E's, for control/launch, not for these read
+  // routes; see this block's task 2 description).
+
+  /// `GET /api/runs` — every currently-tracked run
+  /// (`LiveStateStore::list_active()`, serve-api.md §14.1).
+  ///
+  /// A `200 []` response is a valid, expected success — it means no engine
+  /// is mounted or nothing is running, never an error.
+  ///
+  /// Throws [FatalAuthError] on `401`, [ApiError] on other HTTP errors, or a
+  /// [SocketException] / [HttpException] on network failure.
+  Future<List<RunSummaryDto>> getRuns() async {
+    final result = await _transport.get(
+      '$_baseUrl/api/runs',
+      headers: _defaultHeaders,
+    );
+    return _decodeList(result.statusCode, result.body, RunSummaryDto.fromJson);
+  }
+
+  /// `GET /api/runs/{id}` — the per-node snapshot for run [runId]
+  /// (serve-api.md §14.2).
+  ///
+  /// Throws [FatalAuthError] on `401`, [ApiError] on other HTTP errors, or a
+  /// [SocketException] / [HttpException] on network failure.
+  Future<RunStateDto> getRun(String runId) async {
+    final encodedRunId = Uri.encodeComponent(runId);
+    final result = await _transport.get(
+      '$_baseUrl/api/runs/$encodedRunId',
+      headers: _defaultHeaders,
+    );
+    return _decode(result.statusCode, result.body, RunStateDto.fromJson);
   }
 
   /// Append [params] to [base] as a URL-encoded query string; returns

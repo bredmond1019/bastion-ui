@@ -672,6 +672,104 @@ void main() {
     });
   });
 
+  group('getRuns', () {
+    test('GET /api/runs — bearer header, decodes populated list', () async {
+      final t = FakeHttpTransport()
+        ..on('GET', '/api/runs', status: 200, body: runsFixture);
+      final api = _makeApi(t);
+
+      final runs = await api.getRuns();
+
+      expect(runs, hasLength(3));
+      expect(runs[0].runId, 'b6a1c1e0-0000-4000-8000-000000000000');
+      expect(runs[0].status, 'running');
+      expect(runs[2].status, 'suspended');
+      _expectBearer(t.lastCallTo('GET', '/api/runs')!);
+    });
+
+    test('empty-collection fixture decodes to an empty list — no engine '
+        'mounted is a valid success, not an error', () async {
+      final t = FakeHttpTransport()
+        ..on('GET', '/api/runs', status: 200, body: runsEmptyFixture);
+      final api = _makeApi(t);
+
+      expect(await api.getRuns(), isEmpty);
+    });
+
+    test('401 yields FatalAuthError, not retried', () async {
+      final t = FakeHttpTransport()
+        ..on('GET', '/api/runs', status: 401, body: unauthorizedErrorFixture);
+      final api = _makeApi(t);
+
+      await expectLater(() => api.getRuns(), throwsA(isA<FatalAuthError>()));
+
+      expect(t.callCount('GET', '/api/runs'), 1);
+    });
+  });
+
+  group('getRun', () {
+    test(
+      'GET /api/runs/{id} — decodes node list, no aggregate status',
+      () async {
+        final t = FakeHttpTransport()
+          ..on(
+            'GET',
+            '/api/runs/b6a1c1e0-0000-4000-8000-000000000000',
+            status: 200,
+            body: runStateFullFixture,
+          );
+        final api = _makeApi(t);
+
+        final state = await api.getRun('b6a1c1e0-0000-4000-8000-000000000000');
+
+        expect(state.runId, 'b6a1c1e0-0000-4000-8000-000000000000');
+        expect(state.nodes, isNotEmpty);
+        _expectBearer(
+          t.lastCallTo(
+            'GET',
+            '/api/runs/b6a1c1e0-0000-4000-8000-000000000000',
+          )!,
+        );
+      },
+    );
+
+    test('run id needing escaping is percent-encoded', () async {
+      final t = FakeHttpTransport()
+        ..on(
+          'GET',
+          '/api/runs/run%20id%20with%20spaces',
+          status: 200,
+          body: runStateEmptyFixture,
+        );
+      final api = _makeApi(t);
+
+      await api.getRun('run id with spaces');
+
+      expect(t.callCount('GET', '/api/runs/run%20id%20with%20spaces'), 1);
+    });
+
+    test('401 yields FatalAuthError, not retried', () async {
+      final t = FakeHttpTransport()
+        ..on(
+          'GET',
+          '/api/runs/b6a1c1e0-0000-4000-8000-000000000000',
+          status: 401,
+          body: unauthorizedErrorFixture,
+        );
+      final api = _makeApi(t);
+
+      await expectLater(
+        () => api.getRun('b6a1c1e0-0000-4000-8000-000000000000'),
+        throwsA(isA<FatalAuthError>()),
+      );
+
+      expect(
+        t.callCount('GET', '/api/runs/b6a1c1e0-0000-4000-8000-000000000000'),
+        1,
+      );
+    });
+  });
+
   // ---------------------------------------------------------------------
   // Error contract — applies uniformly across every route; exercised here
   // once per distinct failure mode using getRepos as the representative
