@@ -261,10 +261,13 @@ const Map<String, dynamic> boardBlockFullFixture = {
   'dependent_count': 2,
   'ready': true,
   'unmet_count': 0,
+  'last_touched': '2026-08-10T12:00:00Z',
 };
 
-/// Minimal `BoardBlockDto` — every optional field, including `blocked_by`
-/// and the `?graph=true`-only fields, absent.
+/// Minimal `BoardBlockDto` — every optional field, including `blocked_by`,
+/// the `?graph=true`-only fields, and `last_touched`, absent. `last_touched`
+/// absent means "never worked" — not merely "unrequested" like the
+/// `?graph=true` fields.
 const Map<String, dynamic> boardBlockMinimalFixture = {
   'id': 'BA.1.A',
   'title': 'Bootstrap',

@@ -167,6 +167,25 @@ final class BoardBlockDto {
   /// `null` as `0`.
   final int? unmetCount;
 
+  /// Timestamp of the block's most recent recorded activity — serve-api
+  /// **v0.14** (`BA.11.S`), also `last_touched?: string` in
+  /// `bastion/types/serve.ts:389`.
+  ///
+  /// **`null` here means "never worked", NOT "worked long ago".** The wire
+  /// field is omitted from the JSON body entirely when unknown
+  /// (`skip_serializing_if`) — a deliberate divergence from the
+  /// [dependentCount]/[ready]/[unmetCount] siblings' `?graph=1`-gated `null`
+  /// convention above: this field's absence is unconditional and always
+  /// carries that one meaning, on every request regardless of `?graph=1`.
+  /// Never substitute a sentinel date, an epoch, or `state.json.updated`
+  /// for a missing value — the contract forbids all three. Callers deriving
+  /// a repo's recency (the newest [lastTouched] across its blocks) MUST
+  /// treat "every block's [lastTouched] is `null`" as its own state
+  /// ("never worked"), distinct from any known, however old, timestamp —
+  /// collapsing the two is the same class of bug as rendering `null` as
+  /// `0` (`BU.ticket.dashboard-now-render`).
+  final DateTime? lastTouched;
+
   const BoardBlockDto({
     required this.id,
     required this.title,
@@ -178,11 +197,13 @@ final class BoardBlockDto {
     this.dependentCount,
     this.ready,
     this.unmetCount,
+    this.lastTouched,
   });
 
   factory BoardBlockDto.fromJson(Map<String, dynamic> json) {
     final rawBlockedBy = json['blocked_by'];
     final rawEpics = json['epics'];
+    final rawLastTouched = json['last_touched'];
     return BoardBlockDto(
       id: json['id'] as String? ?? '',
       title: json['title'] as String? ?? '',
@@ -201,6 +222,9 @@ final class BoardBlockDto {
       dependentCount: (json['dependent_count'] as num?)?.toInt(),
       ready: json['ready'] as bool?,
       unmetCount: (json['unmet_count'] as num?)?.toInt(),
+      lastTouched: rawLastTouched is String
+          ? DateTime.tryParse(rawLastTouched)
+          : null,
     );
   }
 }
