@@ -346,6 +346,43 @@ void main() {
       container = ProviderContainer();
     });
 
+    test(
+      'periodic re-seed picks up a run that appeared and stayed at one '
+      'status the whole time — the run_transition gap this safety net '
+      'exists for (serve-api.md §8.3, D17: no push on first observation)',
+      () async {
+        httpTransport.onSequence('GET', '/api/runs', [
+          (status: 200, body: <Map<String, dynamic>>[]),
+          (
+            status: 200,
+            body: [
+              {'run_id': 'r-new', 'status': 'running'},
+            ],
+          ),
+        ]);
+        container = ProviderContainer(
+          overrides: [
+            bastionSocketProvider.overrideWith((ref) => socket),
+            bastionApiProvider.overrideWith((ref) => api),
+            runsReseedIntervalProvider.overrideWithValue(
+              const Duration(milliseconds: 20),
+            ),
+          ],
+        );
+
+        container.read(runsProvider);
+
+        // No run_transition frame ever arrives for 'r-new' (by design, per
+        // D17) — only the periodic re-seed can surface it.
+        await pump(10);
+
+        final runs = container.read(runsProvider);
+        expect(runs, hasLength(1));
+        expect(runs.single.runId, 'r-new');
+        expect(runs.single.status, 'running');
+      },
+    );
+
     test('reconnect re-subscribes exactly once', () async {
       // This test needs its own socket (zero backoff, and access to every
       // transport it creates) rather than the shared `setUp` socket.

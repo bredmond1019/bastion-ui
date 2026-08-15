@@ -49,6 +49,18 @@
 /// failure. Rendering the explanatory empty state is the runs screen's job
 /// (task 5), not this provider's.
 ///
+/// ## Trap 4 — the push stream never announces a run's first appearance
+///
+/// serve-api.md §8.3 (D17) is explicit: `run_transition` emits nothing on a
+/// run's first observation, only on a later status *change* or on
+/// disappearance. A run whose aggregate status is constant for its whole
+/// life (e.g. a single-node workflow) therefore never gets an "it appeared"
+/// push — the only push it ever produces is the terminal one, which arrives
+/// for a run this notifier never added to [state], so it is correctly a
+/// no-op (see [RunsNotifier._onTransition]). [runsReseedIntervalProvider]
+/// backs a periodic `GET /api/runs` re-seed as a self-healing safety net for
+/// exactly this gap, independent of the push stream.
+///
 /// This file is Flutter/riverpod-facing (not pure Dart) — it depends on
 /// `services/bastion_api.dart`, `services/bastion_socket.dart`, and
 /// `models/frame.dart`.
@@ -71,6 +83,13 @@ const runsTopic = 'runs';
 /// (serve-api.md §8.3).
 const runTransitionEvent = 'run_transition';
 
+/// Cadence for the periodic REST re-seed safety net (see [RunsNotifier]'s
+/// class doc, "Defense — periodic re-seed"). Overridable in tests so a test
+/// doesn't have to wait out the real interval.
+final runsReseedIntervalProvider = Provider<Duration>(
+  (ref) => const Duration(seconds: 15),
+);
+
 /// Live list of runs: REST-seeded on first read, then kept current by
 /// pushed `run_transition` frames on the bearer-authed `"runs"` WS topic.
 final runsProvider = StateNotifierProvider<RunsNotifier, List<RunSummaryDto>>((
@@ -85,23 +104,43 @@ final runsProvider = StateNotifierProvider<RunsNotifier, List<RunSummaryDto>>((
       'screen.',
     );
   }
+  final reseedInterval = ref.watch(runsReseedIntervalProvider);
   // NB: StateNotifierProvider disposes the returned notifier
   // automatically when the provider itself is disposed — do not also
   // register `ref.onDispose(notifier.dispose)` here, or dispose() runs
   // twice (the trap already documented in `repos_provider.dart`).
-  return RunsNotifier(socket: socket, api: api);
+  return RunsNotifier(socket: socket, api: api, reseedInterval: reseedInterval);
 });
 
 /// Owns the `"runs"` topic subscription and REST seed for [runsProvider].
+///
+/// ## Defense — periodic re-seed
+///
+/// serve-api.md §8.3 (D17) documents that `run_transition` deliberately
+/// emits nothing on a run's first observation — only on a later status
+/// *change* or on disappearance. A run whose aggregate status never changes
+/// between appearing and going terminal (e.g. a single-node workflow that
+/// stays `running` throughout) therefore produces no "it appeared" push at
+/// all, and the *only* push it ever produces — the terminal one — arrives
+/// for a run this notifier never added to [state], so [_onTransition]
+/// correctly no-ops on it (there is no row to remove). Observed live
+/// 2026-08-15: a multi-minute `RESEARCH_AGENT` run never appeared on the
+/// Runs screen despite `GET /api/runs` reflecting it as `running` throughout
+/// its life. [_reseedTimer] re-polls `GET /api/runs` on [reseedInterval] as
+/// a self-healing safety net independent of the push stream, so a run like
+/// that is picked up on the next tick even though it was never pushed.
 class RunsNotifier extends StateNotifier<List<RunSummaryDto>> {
   // Named parameters socket/api map to private fields; initializing formals
   // cannot be used here because the public parameter names differ from the
   // private field names (e.g. `socket` → `_socket`).
   // ignore: prefer_initializing_formals
-  RunsNotifier({required BastionSocket socket, required BastionApi api})
-    : _socket = socket, // ignore: prefer_initializing_formals
-      _api = api, // ignore: prefer_initializing_formals
-      super(const []) {
+  RunsNotifier({
+    required BastionSocket socket,
+    required BastionApi api,
+    Duration reseedInterval = const Duration(seconds: 15),
+  }) : _socket = socket, // ignore: prefer_initializing_formals
+       _api = api, // ignore: prefer_initializing_formals
+       super(const []) {
     _seed();
     _socket.send(ClientFrames.subscribe(runsTopic));
     _sub = _socket.frames
@@ -110,11 +149,13 @@ class RunsNotifier extends StateNotifier<List<RunSummaryDto>> {
         )
         .cast<EventFrame>()
         .listen(_onTransition);
+    _reseedTimer = Timer.periodic(reseedInterval, (_) => _seed());
   }
 
   final BastionSocket _socket;
   final BastionApi _api;
   StreamSubscription<EventFrame>? _sub;
+  Timer? _reseedTimer;
 
   /// Re-fetch the runs list from `GET /api/runs`.
   ///
@@ -182,6 +223,7 @@ class RunsNotifier extends StateNotifier<List<RunSummaryDto>> {
   void dispose() {
     _socket.send(ClientFrames.unsubscribe(runsTopic));
     _sub?.cancel();
+    _reseedTimer?.cancel();
     super.dispose();
   }
 }
