@@ -13,6 +13,7 @@ import 'package:flutter/material.dart' hide ConnectionState;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'models/frame.dart';
+import 'screens/briefing_screen.dart';
 import 'screens/dashboard_screen.dart';
 import 'screens/quick_actions_screen.dart';
 import 'screens/repo_detail_screen.dart';
@@ -255,6 +256,11 @@ class _HomeShellState extends ConsumerState<HomeShell> {
 /// (`BU.3.A` Task 6 — closes the loop `BU.1.A`/`BU.2.A` left implicit: a
 /// screen existing and being unit-tested is not the same as it being
 /// reachable from the running app).
+///
+/// [BriefingScreen] is the FIRST tab, ahead of Sessions (`BU.13.B` task 2 —
+/// deliberately wired second in that spec, not last, so every later task
+/// lands on a screen already reachable from the real route rather than a
+/// synthetic pump). Dashboard stays a tab here too; `BU.13.D` retires it.
 class _ConnectedBody extends ConsumerStatefulWidget {
   const _ConnectedBody();
 
@@ -264,6 +270,7 @@ class _ConnectedBody extends ConsumerStatefulWidget {
 
 class _ConnectedBodyState extends ConsumerState<_ConnectedBody> {
   static const _tabs = [
+    BriefingScreen(),
     SessionsListScreen(),
     DashboardScreen(),
     QuickActionsScreen(),
@@ -322,6 +329,10 @@ class _ConnectedBodyState extends ConsumerState<_ConnectedBody> {
         selectedIndex: _tabIndex,
         onDestinationSelected: (index) => setState(() => _tabIndex = index),
         destinations: const [
+          NavigationDestination(
+            icon: Icon(Icons.today_outlined),
+            label: 'Briefing',
+          ),
           NavigationDestination(icon: Icon(Icons.list), label: 'Sessions'),
           NavigationDestination(
             icon: Icon(Icons.dashboard),
