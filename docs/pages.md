@@ -6,7 +6,7 @@ doc_id: pages
 layer: [surface]
 project: bastion-ui
 status: active
-keywords: [screens, routes, riverpod, navigation, dashboard, sessions]
+keywords: [screens, routes, riverpod, navigation, dashboard, sessions, briefing]
 related: [architecture, api-reference]
 ---
 
@@ -14,7 +14,7 @@ related: [architecture, api-reference]
 
 All screens live in `lib/screens/`. Routing is handled by `BastionApp.onGenerateRoute`
 in `lib/main.dart`; the app's root shell (`HomeShell` → `_ConnectedBody`) hosts a
-bottom `NavigationBar` with three tabs.
+bottom `NavigationBar` with four tabs.
 
 ## `HomeShell` (`lib/main.dart`)
 
@@ -25,13 +25,14 @@ renders `ConnectionBanner` above either a "Configure a connection" placeholder o
 
 ### `_ConnectedBody` (private, `lib/main.dart`)
 
-Rendered once the socket/API are live. `IndexedStack` of three tabs so all stay mounted:
+Rendered once the socket/API are live. `IndexedStack` of four tabs so all stay mounted:
 
 | Tab | Screen | Icon |
 |---|---|---|
-| 0 | `SessionsListScreen` | `Icons.list` |
-| 1 | `DashboardScreen` | `Icons.dashboard` |
-| 2 | `QuickActionsScreen` | `Icons.flash_on` |
+| 0 | `BriefingScreen` | `Icons.today_outlined` |
+| 1 | `SessionsListScreen` | `Icons.list` |
+| 2 | `DashboardScreen` | `Icons.dashboard` |
+| 3 | `QuickActionsScreen` | `Icons.flash_on` |
 
 Also activates `notificationWiringProvider` and
 `workflowDoneNotificationWiringProvider`, and shows a foreground `SnackBar` on
@@ -49,9 +50,41 @@ per `bastion/docs/serve-api.md`), and bearer token; validates all three, then ca
 > remains correct as the app's default for now (local dev/testing on this machine); revisit
 > before shipping to a phone that needs to reach the Mini for real.
 
+## `BriefingScreen`
+
+Tab 0. The app's first-run landing screen — an operator "what needs me right now" digest.
+Watches `briefingViewModelProvider` (`state/briefing_provider.dart`), which composes three
+independently-fetching sections: `GET /api/board` (`?graph=true`, paid on every load),
+`GET /api/attention`, and the existing `sessionsProvider`. Each section can load, error, or
+succeed independently — a failed section renders its own inline error + retry without
+blocking the other two.
+
+- **Header** (`BriefingHeader`) — three `StatTile`s in consequence order: needs-you (operator
+  gates + needs-input sessions), blocked (blocked-lane attention carryover), running (live
+  sessions). A section error renders that stat as an em dash rather than a stale/zero count.
+- **Lane 1 — gates** (`BriefingGatesLane`) — `GateCard`s for board blocks blocked on an
+  operator/approval dependency, ranked by blast radius (`dependent_count`, nulls sort last);
+  `GateCard.onAct` navigates to the existing `/repos/<name>` route. Needs-input sessions render
+  as `SeverityRow`s with an `AgeChip` derived from `now.subtract(idle)`.
+- **Lane 2 — blocked blocks** — `AttentionCarryoverDto` entries in the `blocking` lane, ranked
+  by `age_days` descending, rendered as `SeverityRow`s with a "waiting on" phrase from
+  `unmetBlocks`.
+- **Lane 3 — live runs** — sessions with `state == 'running'` and a non-blocked agent state,
+  sorted by name, rendered as `SeverityRow`s.
+
+Each lane has its own namespaced error/empty state (`briefing-lane-error-<laneId>` /
+`briefing-lane-empty-<laneId>`) and its own retry action wired to
+`refreshFailedBriefingSections`. The `GateCard` "Act" button and lane retry buttons are scoped
+to `AppTokens.accent2` via a local theme override (distinguished from the accent2 active/RUNNING
+`StatusPill` by a filled-vs-bordered structural channel, not hue).
+
+See `lib/state/briefing_model.dart` for the pure ranking/view-model layer (`BriefingViewModel`,
+`BriefingSectionState<T>`) and `test/e2e/briefing_e2e_test.dart` for the real-server e2e
+cross-check.
+
 ## `SessionsListScreen`
 
-Tab 0. Watches `sessionsProvider` (live session list) and `needsInputProvider` (flagged
+Tab 1. Watches `sessionsProvider` (live session list) and `needsInputProvider` (flagged
 session names), rendering one `SessionCard` per session (sorted by name). Below the
 `ResponsiveScaffold` tablet breakpoint (720dp), tapping a card navigates to
 `/sessions/<name>` via `sessionDetailRouteName(name)`, unchanged. At/above the
@@ -71,7 +104,7 @@ as its own route) the AppBar's implied back button is suppressed (BU.4.A).
 
 ## `DashboardScreen`
 
-Tab 1. Watches `reposProvider` (workspace-registry repo list, sorted by name).
+Tab 2. Watches `reposProvider` (workspace-registry repo list, sorted by name).
 Each row (`_RepoRow`) additionally watches `repoWorkflowsProvider(repo.name)` to derive
 a `StatusBadge` — `RepoBadgeState.inFlight` if any workflow has `status == 'running'`,
 else `RepoBadgeState.hasHandoff` if `repo.hasHandoff`, else `RepoBadgeState.idle`.
@@ -98,7 +131,7 @@ the workflow list update without a manual refresh.
 
 ## `QuickActionsScreen`
 
-Tab 2. Watches `commandsProvider` (persisted, user-editable command-palette list),
+Tab 3. Watches `commandsProvider` (persisted, user-editable command-palette list),
 rendering one tile per `PaletteCommand` with edit/delete `IconButton`s and tap-to-invoke
 on the tile itself; a FAB opens a shared add/edit `AlertDialog` (label + command
 fields). Tapping a tile opens `CommandInvokeSheet` (inject/spawn mode toggle, session

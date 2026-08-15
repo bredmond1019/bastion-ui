@@ -7,6 +7,7 @@
 /// `tasks.md` Notes section).
 library;
 
+export 'bastiel_lockup.dart';
 export 'eyebrow.dart';
 export 'gradient_top_bar.dart';
 export 'heading_rule.dart';

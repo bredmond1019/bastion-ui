@@ -1,7 +1,5 @@
 // ignore_for_file: avoid_relative_lib_imports
 
-import 'dart:convert';
-
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -10,44 +8,7 @@ import 'package:bastion_ui/state/repos_provider.dart';
 import 'package:bastion_ui/state/sessions_provider.dart'
     show bastionApiProvider;
 
-// ---------------------------------------------------------------------------
-// Fake transport (mirrors sessions_provider_test.dart's fixture)
-// ---------------------------------------------------------------------------
-
-class FakeHttpTransport implements HttpTransport {
-  final List<({int statusCode, String body})> _responses = [];
-  int getCallCount = 0;
-
-  void setResponse({required int statusCode, required Object body}) {
-    final encoded = body is String ? body : jsonEncode(body);
-    _responses.add((statusCode: statusCode, body: encoded));
-  }
-
-  @override
-  Future<({int statusCode, String body})> get(
-    String url, {
-    Map<String, String> headers = const {},
-  }) async {
-    getCallCount++;
-    if (_responses.isEmpty) {
-      throw StateError('FakeHttpTransport: no response queued for GET $url');
-    }
-    return _responses.removeAt(0);
-  }
-
-  @override
-  Future<({int statusCode, String body})> post(
-    String url, {
-    Map<String, String> headers = const {},
-    String? body,
-  }) => throw UnimplementedError('not exercised by this test');
-
-  @override
-  Future<({int statusCode, String body})> delete(
-    String url, {
-    Map<String, String> headers = const {},
-  }) => throw UnimplementedError('not exercised by this test');
-}
+import '../support/fake_http_transport.dart';
 
 Future<void> pump([int rounds = 5]) async {
   for (var i = 0; i < rounds; i++) {
@@ -84,8 +45,10 @@ void main() {
     tearDown(() => container.dispose());
 
     test('seeds state from GET /api/repos on first watch', () async {
-      httpTransport.setResponse(
-        statusCode: 200,
+      httpTransport.on(
+        'GET',
+        '/api/repos',
+        status: 200,
         body: [
           {
             'name': 'bastion-ui',
@@ -109,8 +72,10 @@ void main() {
     });
 
     test('refresh() re-fetches and replaces state', () async {
-      httpTransport.setResponse(
-        statusCode: 200,
+      httpTransport.on(
+        'GET',
+        '/api/repos',
+        status: 200,
         body: [
           {'name': 'stale', 'now': 'old', 'has_handoff': false},
         ],
@@ -122,8 +87,10 @@ void main() {
       await pump();
       expect(container.read(reposProvider).single.name, 'stale');
 
-      httpTransport.setResponse(
-        statusCode: 200,
+      httpTransport.on(
+        'GET',
+        '/api/repos',
+        status: 200,
         body: [
           {'name': 'fresh', 'now': 'new', 'has_handoff': true},
         ],
@@ -134,8 +101,10 @@ void main() {
     });
 
     test('a failed refresh() leaves the previous state in place', () async {
-      httpTransport.setResponse(
-        statusCode: 200,
+      httpTransport.on(
+        'GET',
+        '/api/repos',
+        status: 200,
         body: [
           {'name': 'kept', 'now': 'now', 'has_handoff': false},
         ],
@@ -147,7 +116,7 @@ void main() {
       await pump();
       expect(container.read(reposProvider).single.name, 'kept');
 
-      httpTransport.setResponse(statusCode: 500, body: 'boom');
+      httpTransport.on('GET', '/api/repos', status: 500, body: 'boom');
       await container.read(reposProvider.notifier).refresh();
 
       expect(container.read(reposProvider).single.name, 'kept');

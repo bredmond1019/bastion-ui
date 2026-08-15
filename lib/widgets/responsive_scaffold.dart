@@ -4,6 +4,12 @@
 /// [list] + [detail] split renders side by side. [isWide] exposes the same
 /// threshold so callers (e.g. a list screen) can decide push-navigation vs
 /// inline selection consistently.
+///
+/// This widget deliberately carries **no app bar and no brand lockup**. It is
+/// used as a `body:` (see `sessions_list_screen.dart`), so anything app-bar
+/// shaped here renders *below* `HomeShell`'s real AppBar and only on the one
+/// tab that uses it. The lockup therefore lives in `main.dart`'s `HomeShell`
+/// AppBar, which is the single bar visible on every tab at every width.
 library;
 
 import 'package:flutter/material.dart';
@@ -52,7 +58,13 @@ class ResponsiveScaffold extends StatelessWidget {
         children: [
           Expanded(
             flex: 2,
-            child: ColoredBox(color: AppTokens.surface, child: list),
+            child: ColoredBox(
+              color: AppTokens.surface,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [Expanded(child: list)],
+              ),
+            ),
           ),
           const VerticalDivider(width: 1, thickness: 1, color: AppTokens.line),
           Expanded(flex: 5, child: detail),

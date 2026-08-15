@@ -13,6 +13,41 @@ timestamp: "2026-08-14T11:52:00Z"
 
 ## [run: 2026-08-14]
 
+`13.B-briefing-screen` (`BU.13.B` — The Briefing, new home surface) closed — all 9 tasks passed,
+end-of-run review **PASS**. Task 1 built the pure `BriefingViewModel`/`BriefingSectionState`
+ranking layer (null-safe descending sort for operator gates by `dependent_count`, needs-input
+sessions by idle time, blocked blocks by `age_days`). Task 2 landed `BriefingScreen` as the app's
+first bottom-nav tab, ahead of Sessions/Dashboard/Actions. Task 3 added `briefing_provider.dart`
+composing `getBoard(graph: true)`, `getAttention`, and the existing `sessionsProvider` into the
+view model via independently-fetching sections, with `refreshFailedBriefingSections` re-fetching
+only errored sections. Task 4 wired the three-stat header (needs-you/blocked/running, em-dash on
+section error). Tasks 5–6 built the three ranked lanes (gates + needs-input sessions, blocked
+blocks, live runs) as `GateCard`/`SeverityRow` instrument primitives, each with its own inline
+error state (retry) and empty state, isolated from the other lanes. Task 7 resolved the
+"Act"/retry vs. active-status-pill color ambiguity by using a structural filled/borderless-vs-bordered
+channel instead of hue, both on `AppTokens.accent2`. Task 8 added a real-server e2e test
+(self-skips without a `bastion` binary) cross-checking header counts against independent
+board/attention/sessions fetches and confirming `getBoard(graph: true)` populates blast radius;
+ran it green against a freshly rebuilt `bastion` binary. Task 9 confirmed the full validation
+suite: `dart format` clean, `flutter analyze` clean, `flutter test --exclude-tags e2e` 707 passed
+(+51 over the pre-spec baseline of 656). Notable decision: `getBoard(graph: true)` is paid on
+every board load rather than fetched separately, recorded in the spec's Notes. Next: `BU.13.C`
+(Repo detail, restructured).
+
+```
+2d9449d docs: update docs for 13.B-briefing-screen
+bbf6f56 feat: implement 13.B-briefing-screen-task8
+77a2261 feat: implement 13.B-briefing-screen-task7
+0f12406 feat: implement 13.B-briefing-screen-task6
+6d6ea14 feat: implement 13.B-briefing-screen-task5
+856f27f feat: implement 13.B-briefing-screen-task4
+ee642bb feat: implement 13.B-briefing-screen-task3
+ed8bb1d feat: implement 13.B-briefing-screen-task2
+6877a54 feat: implement 13.B-briefing-screen-task1
+```
+
+## [run: 2026-08-14]
+
 `BU.10.C` (re-skin existing screens + brand app icon) closed — all 10 tasks passed, end-of-run
 review **PASS**. Tasks 1–5 re-skinned every screen and shared widget onto `AppTokens`/
 `AppTypography`/the `lib/widgets/brand/` primitives: `ResponsiveScaffold`/`ConnectionBanner`/

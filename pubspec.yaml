@@ -106,6 +106,11 @@ flutter:
   assets:
     - assets/icon/app_icon.png
     - assets/icon/app_icon_foreground.png
+    # Brand lockup source images (ticket-brand-header-lockup task1), byte-identical
+    # copies of core/planning/artifacts/brand-screenshots/, mirroring how the web
+    # keeps its own copies in public/ rather than importing across repos.
+    - assets/brand/bastiel-icon.png
+    - assets/brand/bastiel-text.png
 
   # Brand type trio (BU.10.A task1) — vendored OFL-licensed variable fonts, NOT the
   # google_fonts package: this app is tailnet-only, so a device off the tailnet must

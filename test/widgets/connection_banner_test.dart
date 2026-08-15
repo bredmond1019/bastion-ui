@@ -181,7 +181,58 @@ void main() {
               )
               .first,
         );
-        expect(material.color, entry.value.foreground);
+        expect(material.color, entry.value.background);
+      }
+    });
+
+    testWidgets('renders on tone.background with tone.foreground content and a '
+        'tone.border hairline, never tone.foreground as the fill, for ALL '
+        'three connection states (F4 regression pin)', (tester) async {
+      final tones = StatusTones.dark;
+      final expected = {
+        ConnectionStatus.connected: tones.active,
+        ConnectionStatus.reconnecting: tones.warning,
+        ConnectionStatus.disconnected: tones.danger,
+      };
+
+      for (final entry in expected.entries) {
+        await tester.pumpWidget(const SizedBox.shrink());
+        await tester.pumpWidget(_buildBanner(entry.key));
+
+        final material = tester.widget<Material>(
+          find
+              .descendant(
+                of: find.byType(ConnectionBanner),
+                matching: find.byType(Material),
+              )
+              .first,
+        );
+        // The ground is the tone's low-alpha background...
+        expect(material.color, entry.value.background);
+        // ...and it is specifically NOT the tone's saturated foreground —
+        // the exact "onPrimary" inversion F4 flagged.
+        expect(material.color, isNot(entry.value.foreground));
+
+        final container = tester.widget<Container>(
+          find
+              .descendant(
+                of: find.byType(ConnectionBanner),
+                matching: find.byType(Container),
+              )
+              .first,
+        );
+        final decoration = container.decoration! as BoxDecoration;
+        expect(decoration.border!.bottom.color, entry.value.border);
+
+        final icon = tester.widget<Icon>(
+          find
+              .descendant(
+                of: find.byType(ConnectionBanner),
+                matching: find.byType(Icon),
+              )
+              .first,
+        );
+        expect(icon.color, entry.value.foreground);
       }
     });
 

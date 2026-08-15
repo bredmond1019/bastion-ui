@@ -39,6 +39,8 @@ import 'package:bastion_ui/state/sessions_provider.dart'
 import 'package:bastion_ui/theme/app_theme.dart';
 import 'package:bastion_ui/theme/tokens.dart';
 
+import 'support/fake_http_transport.dart';
+
 // ---------------------------------------------------------------------------
 // Fakes (no real network / platform channels)
 // ---------------------------------------------------------------------------
@@ -62,58 +64,73 @@ class _FakeWsTransport implements WsTransport {
   }
 }
 
-/// Serves `getSessions` -> one session named `alpha`, `getPane` -> a
-/// one-line buffer, and `getRepos`/`getRepoStatus`/`getRepoHandoff`/
+/// Builds a shared routing [FakeHttpTransport] pre-registered with
+/// `getSessions` -> one session named `alpha`, `getPane` -> a one-line
+/// buffer, and `getRepos`/`getRepoStatus`/`getRepoHandoff`/
 /// `getRepoWorkflows` -> one repo named `bastion-ui` with no handoff and no
 /// in-flight workflows, so the sessions, dashboard, and repo-detail screens
 /// all have content.
-class _FakeHttpTransport implements HttpTransport {
-  @override
-  Future<({int statusCode, String body})> get(
-    String url, {
-    Map<String, String> headers = const {},
-  }) async {
-    if (url.contains('/pane')) {
-      return (statusCode: 200, body: '{"session_name":"alpha","lines":["hi"]}');
-    }
-    if (url.contains('/repos/') && url.endsWith('/status')) {
-      return (
-        statusCode: 200,
-        body:
-            '{"name":"bastion-ui","now":"wiring dashboard","next":"","'
-            'blocked":"","has_handoff":false,"momentum_now":"","'
-            'momentum_next":"","momentum_blocked":"","momentum_improve":"",'
-            '"momentum_recurring":""}',
-      );
-    }
-    if (url.contains('/repos/') && url.endsWith('/handoff')) {
-      return (statusCode: 404, body: '{"code":"C002"}');
-    }
-    if (url.contains('/repos/') && url.endsWith('/workflows')) {
-      return (statusCode: 200, body: '[]');
-    }
-    if (url.endsWith('/api/repos')) {
-      return (
-        statusCode: 200,
-        body:
-            '[{"name":"bastion-ui","now":"wiring dashboard","has_handoff":false}]',
-      );
-    }
-    return (statusCode: 200, body: '[{"name":"alpha","state":"running"}]');
-  }
-
-  @override
-  Future<({int statusCode, String body})> post(
-    String url, {
-    Map<String, String> headers = const {},
-    String? body,
-  }) async => (statusCode: 204, body: '');
-
-  @override
-  Future<({int statusCode, String body})> delete(
-    String url, {
-    Map<String, String> headers = const {},
-  }) async => (statusCode: 204, body: '');
+///
+/// None of this file's widgets fire a POST/DELETE on initial render (they
+/// are only reachable via an explicit user action this file never
+/// triggers), so no write route is registered here.
+FakeHttpTransport _makeHttpTransport() {
+  final t = FakeHttpTransport();
+  t.on(
+    'GET',
+    '/api/sessions',
+    status: 200,
+    body: [
+      {'name': 'alpha', 'state': 'running'},
+    ],
+  );
+  t.on(
+    'GET',
+    '/api/sessions/alpha/pane',
+    status: 200,
+    body: {
+      'session_name': 'alpha',
+      'lines': ['hi'],
+    },
+  );
+  t.on(
+    'GET',
+    '/api/repos',
+    status: 200,
+    body: [
+      {'name': 'bastion-ui', 'now': 'wiring dashboard', 'has_handoff': false},
+    ],
+  );
+  t.on(
+    'GET',
+    '/api/repos/bastion-ui/status',
+    status: 200,
+    body: {
+      'name': 'bastion-ui',
+      'now': 'wiring dashboard',
+      'next': '',
+      'blocked': '',
+      'has_handoff': false,
+      'momentum_now': '',
+      'momentum_next': '',
+      'momentum_blocked': '',
+      'momentum_improve': '',
+      'momentum_recurring': '',
+    },
+  );
+  t.on(
+    'GET',
+    '/api/repos/bastion-ui/handoff',
+    status: 404,
+    body: {'code': 'C002'},
+  );
+  t.on(
+    'GET',
+    '/api/repos/bastion-ui/workflows',
+    status: 200,
+    body: <dynamic>[],
+  );
+  return t;
 }
 
 /// In-memory fake for `secureStorageProvider` (mirrors
@@ -288,7 +305,7 @@ void main() {
         host: 'test-host',
         port: 4317,
         token: 'test-token',
-        transport: _FakeHttpTransport(),
+        transport: _makeHttpTransport(),
       );
       addTearDown(api.dispose);
 
@@ -339,7 +356,7 @@ void main() {
       host: 'test-host',
       port: 4317,
       token: 'test-token',
-      transport: _FakeHttpTransport(),
+      transport: _makeHttpTransport(),
     );
     addTearDown(api.dispose);
 
@@ -390,7 +407,7 @@ void main() {
       host: 'test-host',
       port: 4317,
       token: 'test-token',
-      transport: _FakeHttpTransport(),
+      transport: _makeHttpTransport(),
     );
     addTearDown(api.dispose);
     final fakeStorage = _FakeSecureStorage();
@@ -440,7 +457,7 @@ void main() {
         host: 'test-host',
         port: 4317,
         token: 'test-token',
-        transport: _FakeHttpTransport(),
+        transport: _makeHttpTransport(),
       );
       addTearDown(api.dispose);
 
