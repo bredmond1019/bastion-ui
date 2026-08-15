@@ -11,6 +11,40 @@ timestamp: "2026-08-15T20:45:00Z"
 
 ---
 
+## [run: 2026-08-15]
+
+Ran `ticket-finish-fake-transport-migration` (`/sdlc-flow`) through tasks 1-7 successfully: the six
+global-FIFO/echo/trivial-fixed local `FakeHttpTransport`/`_FakeHttpTransport` fakes in
+`test/services/bastion_api_read_surfaces_test.dart`, `test/widgets/quick_actions_test.dart`,
+`test/widgets/session_detail_test.dart`, `test/screens/session_detail_clear_test.dart`,
+`test/widgets/repo_detail_test.dart`, and `test/widgets/sessions_list_test.dart` were all migrated
+onto the shared, routing-aware `test/support/fake_http_transport.dart` fixture with explicit
+`on()`/`onSequence()` route registrations replacing the old queue/echo/blanket-204 behavior; task 6
+was found already migrated and committed from a prior attempt. Task 7 (`test/e2e/e2e_support_test.dart`)
+was split rather than forced: the two recording-only `withManagedSession` cases moved onto the shared
+fixture, while the cleanup-failure case keeps a narrow local `_ThrowingDeleteHttpTransport` stub since
+the shared fixture has no throw-injection mechanism and widening its contract was out of scope. Task
+8 (correcting the stale `planning/state.json` block note) BAILED: the vault-side note was already
+correctly committed from a prior attempt, but the repo-wide gate still fails on a pre-existing
+upstream serve-api v0.31/v0.32 version-pin drift (`test/services/serve_api_version_test.dart`,
+`lib/services/serve_api_version.dart` byte-identical to `main`) — verified against base `main` with
+the sibling `../bastion` checkout present, confirming the same failure exists there independent of
+this branch. That file is outside task 8's scope (`planning/state.json` only) and editing the
+upstream-owned contract pin from this repo is forbidden by CLAUDE.md standing rule 6, so the run
+bailed rather than reaching into upstream-owned territory. Next: resolve the serve-api version pin
+upstream in `bastion`, re-pin here, then resume task 8 to close the block.
+
+```
+88ee839 fix: fix pass 1 for ticket-finish-fake-transport-migration-task8
+d0278b4 feat: implement ticket-finish-fake-transport-migration-task7
+cf2efa7 feat: implement ticket-finish-fake-transport-migration-task6
+38064e0 feat: implement ticket-finish-fake-transport-migration-task5
+cfb028d feat: implement ticket-finish-fake-transport-migration-task4
+af77477 feat: implement ticket-finish-fake-transport-migration-task3
+6f6a29e feat: implement ticket-finish-fake-transport-migration-task2
+a0bb5cf feat: implement ticket-finish-fake-transport-migration-task1
+```
+
 ## [2026-08-15]
 
 ### Phase 13 shipped end-to-end; first device verification against a mounted engine
