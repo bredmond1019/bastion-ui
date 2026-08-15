@@ -38,6 +38,53 @@ import 'dashboard_screen.dart' show repoDetailRouteName;
 /// use.
 void _noRetry() {}
 
+// ---------------------------------------------------------------------------
+// Task 7 — the accent constraint (`BU.13.B` task 7).
+//
+// D4 assigned this screen two constraints inherited from `BU.13.A`, which
+// had already shipped when D4 landed (`planning/decisions/D4-brand-system.md`):
+//
+// 1. Every interactive affordance THIS SCREEN introduces resolves to
+//    `AppTokens.accent2` (#58B6FF), never `AppTokens.primary` — measured
+//    contrast: `primary` is 4.99:1 on `AppTokens.surface` (the app's
+//    weakest, on the nav bar), `accent2` clears AAA at 8.30:1. Scoped to
+//    this screen only: neither `ColorScheme.primary` nor any other screen's
+//    styling changes here — that is `BU.13.F`.
+// 2. `accent2` is ALSO `StatusTones.active` (`status_tones.dart:75-78`,
+//    surfaced on this screen via `StatusPillTone.onTrack` → the live-runs
+//    lane's "RUNNING" pill). "You can press this" and "this is running"
+//    therefore share a hue on this screen and must be told apart WITHOUT
+//    colour. The two interactive affordances below use a **filled** solid
+//    accent2 treatment (`GateCard`'s "Act" button, opaque accent2
+//    background) or a **plain, borderless** accent2 text treatment (the
+//    lane retry buttons) — neither shape a colour-blind or grayscale
+//    operator can confuse with the active pill's tinted, BORDERED chip
+//    (`StatusPill`: accent2-tinted fill + accent2 hairline border, no
+//    solid fill). Filled-vs-outlined is the non-hue channel; the pill's
+//    `border` is the structural fact a test can assert without touching
+//    colour (see `test/screens/briefing_accent_test.dart`).
+
+/// The retry buttons' style: an accent2, bold, borderless text button —
+/// deliberately NOT filled and NOT bordered, so it reads as a plain
+/// text-weight affordance distinct from the active pill's bordered chip
+/// even in grayscale.
+final ButtonStyle _interactiveTextButtonStyle = TextButton.styleFrom(
+  foregroundColor: AppTokens.accent2,
+  textStyle: const TextStyle(fontWeight: FontWeight.w700),
+);
+
+/// [BriefingGatesLane]'s local override for `GateCard`'s "Act" button — an
+/// opaque, FILLED accent2 background (not a tint, not a border), the
+/// screen's ONE primary action (principle 5). Scoped to this lane's
+/// subtree via [FilledButtonTheme] rather than the app's global
+/// `ColorScheme`, so no other screen's `FilledButton` is affected.
+final FilledButtonThemeData _gateActionButtonTheme = FilledButtonThemeData(
+  style: FilledButton.styleFrom(
+    backgroundColor: AppTokens.accent2,
+    foregroundColor: AppTokens.paper,
+  ),
+);
+
 /// A lane's inline error state — a short message identifying which section
 /// failed, plus a retry action. Distinct from a lane's empty state
 /// ([_LaneEmptyState]): an error is bad news requiring action, an empty
@@ -75,6 +122,7 @@ class _LaneErrorState extends StatelessWidget {
           const SizedBox(width: 8),
           TextButton(
             key: ValueKey('briefing-lane-retry-$laneId'),
+            style: _interactiveTextButtonStyle,
             onPressed: onRetry,
             child: const Text('Retry'),
           ),
@@ -272,32 +320,35 @@ class BriefingGatesLane extends StatelessWidget {
       );
     }
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        for (final gate in gates) ...[
-          GateCard(
-            name: gate.title,
-            waitingOn: _waitingOn(gate),
-            blastRadius: gate.dependentCount,
-            onAct: () => onGateAct(gate),
-          ),
-          const SizedBox(height: 10),
+    return FilledButtonTheme(
+      data: _gateActionButtonTheme,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          for (final gate in gates) ...[
+            GateCard(
+              name: gate.title,
+              waitingOn: _waitingOn(gate),
+              blastRadius: gate.dependentCount,
+              onAct: () => onGateAct(gate),
+            ),
+            const SizedBox(height: 10),
+          ],
+          for (final entry in needsInput) ...[
+            SeverityRow(
+              severity: SeverityRowSeverity.crit,
+              title: entry.session.name,
+              pillTone: StatusPillTone.needsYou,
+              pillLabel: 'NEEDS INPUT',
+              meta: entry.session.lastLine ?? 'waiting for input',
+              trailingDetail: entry.idle == null
+                  ? null
+                  : AgeChip.since(now.subtract(entry.idle!), now: now),
+            ),
+            const SizedBox(height: 8),
+          ],
         ],
-        for (final entry in needsInput) ...[
-          SeverityRow(
-            severity: SeverityRowSeverity.crit,
-            title: entry.session.name,
-            pillTone: StatusPillTone.needsYou,
-            pillLabel: 'NEEDS INPUT',
-            meta: entry.session.lastLine ?? 'waiting for input',
-            trailingDetail: entry.idle == null
-                ? null
-                : AgeChip.since(now.subtract(entry.idle!), now: now),
-          ),
-          const SizedBox(height: 8),
-        ],
-      ],
+      ),
     );
   }
 }
