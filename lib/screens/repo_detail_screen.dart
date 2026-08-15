@@ -237,20 +237,36 @@ class RepoDetailStats extends StatelessWidget {
 /// [repoBoardProvider]), never the prose `RepoStatusDto.now`/`next`/
 /// `blocked` strings — see `RepoDetailStats`'s doc comment for why.
 ///
-/// Only non-empty lanes render a group here. A real "nothing in this lane"
-/// empty state (rather than simply omitting the group) is task 5's job —
-/// see that task's `repo_detail_empty_test.dart`.
+/// Every lane renders a group here — task 5 replaced "omit the group when
+/// empty" with a real, named empty state per lane ('nothing blocked', etc.)
+/// so an empty lane is never a bare gap and never a literal `[]` reaching
+/// the screen. `[]` on the dashboard cards was a shipped bug
+/// (`BU.ticket.dashboard-now-render`); `repo_detail_empty_test.dart` guards
+/// its return here.
 class RepoDetailBlockLanes extends StatelessWidget {
   const RepoDetailBlockLanes({super.key, required this.boardState});
 
   final BriefingSectionState<BoardLaneDto> boardState;
+
+  /// Per-lane empty-state wording. Named per lane rather than a single
+  /// generic "nothing here" — the wording is what makes an empty lane
+  /// legible instead of just absent.
+  static const Map<String, String> _emptyLabels = {
+    'now': 'Nothing in progress right now.',
+    'next': 'Nothing queued next.',
+    'blocked': 'Nothing blocked.',
+    'deferred': 'Nothing deferred.',
+    'finished': 'Nothing finished yet.',
+  };
 
   @override
   Widget build(BuildContext context) {
     final lanes = boardState.dataOrNull;
     if (lanes == null) {
       // Loading/error already surfaced by RepoDetailStats' em-dash stat
-      // row; this section simply has nothing to render yet.
+      // row; this section simply has nothing to render yet — an unloaded
+      // board is a distinct state from a loaded, empty lane, and only the
+      // latter gets the named empty-state treatment below.
       return const SizedBox.shrink();
     }
 
@@ -262,24 +278,31 @@ class RepoDetailBlockLanes extends StatelessWidget {
       ('finished', 'Finished', lanes.finished),
     ];
 
-    final nonEmpty = groups.where((g) => g.$3.isNotEmpty).toList();
-    if (nonEmpty.isEmpty) {
-      return const SizedBox.shrink();
-    }
-
     return Column(
       key: const ValueKey('repo-detail-block-lanes'),
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        for (final (laneId, label, blocks) in nonEmpty) ...[
+        for (final (laneId, label, blocks) in groups) ...[
           Padding(
             padding: const EdgeInsets.only(bottom: 8),
             child: Eyebrow(label: label),
           ),
-          for (final block in blocks) ...[
-            _RepoDetailBlockRow(laneId: laneId, block: block),
-            const SizedBox(height: 8),
-          ],
+          if (blocks.isEmpty)
+            Padding(
+              key: ValueKey('repo-detail-lane-empty-$laneId'),
+              padding: const EdgeInsets.symmetric(vertical: 4),
+              child: Text(
+                _emptyLabels[laneId]!,
+                style: AppTypography.textTheme.bodySmall?.copyWith(
+                  color: AppTokens.inkFaint,
+                ),
+              ),
+            )
+          else
+            for (final block in blocks) ...[
+              _RepoDetailBlockRow(laneId: laneId, block: block),
+              const SizedBox(height: 8),
+            ],
           const SizedBox(height: 8),
         ],
       ],
