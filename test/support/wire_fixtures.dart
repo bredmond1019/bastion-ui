@@ -437,6 +437,109 @@ const Map<String, dynamic> docTreeEmptyFixture = {
 };
 
 // ---------------------------------------------------------------------------
+// GET /api/runs — serve-api.md §14.1 (RunSummaryDto[], v0.16/v0.17/v0.22)
+// ---------------------------------------------------------------------------
+
+/// Fully populated `RunSummaryDto`, including the v0.22 `repo` enrichment.
+/// `workflow_type` is deliberately omitted — always absent today per
+/// serve-api §14.1's field table.
+const Map<String, dynamic> runSummaryFullFixture = {
+  'run_id': 'b6a1c1e0-0000-4000-8000-000000000000',
+  'status': 'running',
+  'spec_slug': '11.T-run-summary-projection',
+  'started_at': '2026-07-24T12:00:00Z',
+  'updated_at': '2026-07-24T12:00:01Z',
+  'repo': 'bastion-ui',
+};
+
+/// Minimal `RunSummaryDto` — every optional field, including `workflow_type`,
+/// absent; `started_at`/`updated_at` explicit `null` (no recorded node
+/// transitions yet, per the serve-api §14.1 worked example's second entry).
+const Map<String, dynamic> runSummaryMinimalFixture = {
+  'run_id': 'c7b2d2f1-0000-4000-8000-000000000000',
+  'status': 'pending',
+  'started_at': null,
+  'updated_at': null,
+};
+
+/// A `RunSummaryDto` with the v0.17 `suspended` status — LIVE, not
+/// lifecycle-terminal.
+const Map<String, dynamic> runSummarySuspendedFixture = {
+  'run_id': 'd8c3e3a2-0000-4000-8000-000000000000',
+  'status': 'suspended',
+  'spec_slug': '11.N-run-transition-ws-push',
+  'started_at': '2026-08-01T10:00:00Z',
+  'updated_at': '2026-08-01T10:05:00Z',
+};
+
+/// `GET /api/runs` empty-collection response — a valid, expected success,
+/// including when no engine is mounted.
+const List<dynamic> runsEmptyFixture = [];
+
+/// `GET /api/runs` populated response.
+const List<dynamic> runsFixture = [
+  runSummaryFullFixture,
+  runSummaryMinimalFixture,
+  runSummarySuspendedFixture,
+];
+
+// ---------------------------------------------------------------------------
+// GET /api/runs/{id} — serve-api.md §14.2 (RunStateDto)
+// ---------------------------------------------------------------------------
+
+/// Fully populated `NodeTransitionDto` for a successful node.
+const Map<String, dynamic> nodeTransitionSuccessFixture = {
+  'node': 'DataIngestionNode',
+  'status': 'success',
+  'started_at': '2026-07-24T12:00:00Z',
+  'completed_at': '2026-07-24T12:00:01Z',
+  'error': null,
+  'input': null,
+  'output': {'documents_loaded': 3},
+  'usage': null,
+};
+
+/// A `NodeTransitionDto` for a failed LLM node, with `error`/`input`/`usage`
+/// all populated.
+const Map<String, dynamic> nodeTransitionFailedFixture = {
+  'node': 'SummarizeNode',
+  'status': 'failed',
+  'started_at': '2026-07-24T12:00:01Z',
+  'completed_at': '2026-07-24T12:00:02Z',
+  'error': 'timeout',
+  'input': {'documents': 3},
+  'output': null,
+  'usage': {
+    'input_tokens': 512,
+    'output_tokens': 128,
+    'model': 'claude-sonnet-5',
+  },
+};
+
+/// Minimal `NodeTransitionDto` — still `pending`, every optional field
+/// absent.
+const Map<String, dynamic> nodeTransitionPendingFixture = {
+  'node': 'PendingNode',
+  'status': 'pending',
+};
+
+/// Fully populated `RunStateDto` — no aggregate status field, per §14.2.
+const Map<String, dynamic> runStateFullFixture = {
+  'run_id': 'b6a1c1e0-0000-4000-8000-000000000000',
+  'event': {'ticket_id': 'T-1'},
+  'metadata': {'workflow': 'sdlc-flow'},
+  'nodes': [nodeTransitionSuccessFixture, nodeTransitionFailedFixture],
+};
+
+/// `RunStateDto` for a run with no recorded node transitions yet.
+const Map<String, dynamic> runStateEmptyFixture = {
+  'run_id': 'c7b2d2f1-0000-4000-8000-000000000000',
+  'event': <String, dynamic>{},
+  'metadata': <String, dynamic>{},
+  'nodes': <dynamic>[],
+};
+
+// ---------------------------------------------------------------------------
 // GET /api/docs/{repo}/file — serve-api.md §16.2 (DocFileDto)
 // ---------------------------------------------------------------------------
 
