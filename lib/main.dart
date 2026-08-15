@@ -17,6 +17,7 @@ import 'screens/briefing_screen.dart';
 import 'screens/dashboard_screen.dart';
 import 'screens/quick_actions_screen.dart';
 import 'screens/repo_detail_screen.dart';
+import 'screens/runs_screen.dart';
 import 'screens/session_detail_screen.dart';
 import 'screens/sessions_list_screen.dart';
 import 'screens/settings_screen.dart';
@@ -257,6 +258,10 @@ class _HomeShellState extends ConsumerState<HomeShell> {
 /// screen existing and being unit-tested is not the same as it being
 /// reachable from the running app).
 ///
+/// A fifth tab, [RunsScreen], is wired here first — before its provider or
+/// content exist — for the same reason (`BU.13.E` task 3): every later task
+/// in that block lands on a screen already reachable from the real route.
+///
 /// [BriefingScreen] is the FIRST tab, ahead of Sessions (`BU.13.B` task 2 —
 /// deliberately wired second in that spec, not last, so every later task
 /// lands on a screen already reachable from the real route rather than a
@@ -274,6 +279,7 @@ class _ConnectedBodyState extends ConsumerState<_ConnectedBody> {
     SessionsListScreen(),
     DashboardScreen(),
     QuickActionsScreen(),
+    RunsScreen(),
   ];
 
   int _tabIndex = 0;
@@ -339,6 +345,10 @@ class _ConnectedBodyState extends ConsumerState<_ConnectedBody> {
             label: 'Dashboard',
           ),
           NavigationDestination(icon: Icon(Icons.flash_on), label: 'Actions'),
+          NavigationDestination(
+            icon: Icon(Icons.play_circle_outline),
+            label: 'Runs',
+          ),
         ],
       ),
     );
