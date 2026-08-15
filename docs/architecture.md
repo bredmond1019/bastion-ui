@@ -97,9 +97,9 @@ lib/
    and reconnects automatically.
 
 Once both providers are non-null, `HomeShell` renders `_ConnectedBody`, a bottom
-`NavigationBar` with four tabs (`BriefingScreen`, `SessionsListScreen`, `DashboardScreen`,
-`QuickActionsScreen`) inside an `IndexedStack` (all screens stay mounted so provider
-state survives tab switches).
+`NavigationBar` with five tabs (`BriefingScreen`, `SessionsListScreen`, `DashboardScreen`,
+`QuickActionsScreen`, `RunsScreen`) inside an `IndexedStack` (all screens stay mounted so
+provider state survives tab switches).
 `_ConnectedBody` also activates `notificationWiringProvider` and
 `workflowDoneNotificationWiringProvider` (local-notification bridges) and shows a
 foreground `SnackBar` on `workflow_done` events.
@@ -107,11 +107,20 @@ foreground `SnackBar` on `workflow_done` events.
 ### REST + WS seed/live pattern
 
 Most list-shaped state (`sessionsProvider`, `paneProvider`, `reposProvider`,
-`repoWorkflowsProvider`) follows the same pattern: seed via a one-shot REST call, then
-either subscribe to a WS topic for live updates (sessions, pane) or re-fetch on a
-matching WS `event` frame (repo workflows — there is no WS push for the repo list
-itself). A boolean guard (e.g. `_sawWsSnapshot`) ensures a slower REST response never
-overwrites state a faster WS frame already updated.
+`repoWorkflowsProvider`, `runsProvider`) follows the same pattern: seed via a one-shot
+REST call, then either subscribe to a WS topic for live updates (sessions, pane, runs)
+or re-fetch on a matching WS `event` frame (repo workflows — there is no WS push for the
+repo list itself). A boolean guard (e.g. `_sawWsSnapshot`) ensures a slower REST response
+never overwrites state a faster WS frame already updated.
+
+`runsProvider` (`state/runs_provider.dart`, BU.13.E) seeds via `BastionApi.getRuns()`
+then subscribes to the bearer-authed `"runs"` WS topic, decoding `run_transition`/
+`run_stream_status` events via the existing generic `EventFrame` (no new `BastionFrame`
+subtype). A `run_transition` with `terminal: true` removes the run from state (a fresh
+`GET /api/runs` would no longer return it); every other status, including `suspended`,
+upserts it and leaves it live. The notifier subscribes once (ctor) and unsubscribes once
+(dispose); reconnect re-subscription is handled by `BastionSocket`'s existing
+active-topic replay, not reimplemented here.
 
 `sessionsProvider`, `paneProvider`, and `repoWorkflowsProvider` filter their WS stream to
 their own topic/session/repo, then apply rxdart `.debounceTime(~150ms)` (trailing) before
@@ -179,6 +188,14 @@ re-seed can never clobber newer WS-delivered state.
   coerced to 0), ties broken on a stable id/slug/name key. `BriefingViewModel.needsInputIdle`
   is a `Map<String, Duration>` populated externally (by `briefing_provider.dart`) from
   `needs_input` event arrival time, since `SessionDto` carries no timestamp itself.
+- `RunSummaryDto` / `RunStateDto` / `NodeTransitionDto` / `RunUsageDto`
+  (`models/run_dto.dart`, BU.13.E) — mirror serve-api.md §14's runs surface
+  (`GET /api/runs`, `GET /api/runs/{id}`, the `runs` WS topic). `RunSummaryDto` includes
+  the v0.22 `repo` field even though it predates the v0.16 field set named in the
+  original spec, per Standing Rule 6 (mirror the upstream contract exactly). Status
+  fields decode as raw `String`, not an enum, matching `WorkflowStateDto`'s existing
+  precedent — an unrecognised status value can never throw. Absent and explicit-null
+  wire values both decode to Dart `null` throughout.
 
 **Version pin.** `lib/services/serve_api_version.dart` exports `kServeApiPin`, the
 exact serve-api contract revision the model layer above was written against.

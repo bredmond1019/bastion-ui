@@ -13,6 +13,33 @@ timestamp: "2026-08-14T11:52:00Z"
 
 ## [run: 2026-08-15]
 
+`13.E-live-runs` (`BU.13.E` — Live runs, read + runs WebSocket topic) closed — all 7 tasks passed,
+end-of-run review **PASS**. Task 1 added `run_dto.dart` (`RunSummaryDto`/`RunStateDto`/
+`NodeTransitionDto`/`RunUsageDto`) mirroring serve-api.md §14, including the v0.22 `repo` field.
+Task 2 added `BastionApi.getRuns()`/`getRun(id)` (bearer-auth only). Task 3 wired a minimal
+`RunsScreen` as `HomeShell`'s fifth bottom-nav tab. Task 4 added `runs_provider.dart`: REST-seeds
+the run list then keeps it live via the bearer-authed `runs` WS topic, applying `run_transition`
+events (suspended stays live, `terminal:true` removes the run), unsubscribing on dispose. Task 5
+built out `RunsScreen` with a live list (status badge + `AgeChip`), a node-transition drill-in per
+run, and an honest empty state for `GET /api/runs` returning `[]`. Task 6 added
+`test/e2e/runs_ws_e2e_test.dart` proving a real subscribe reaches `bastion serve` and that
+dispose()'s unsubscribe holds on reconnect; the dev harness never mounts the engine, so the
+live-update half of the AC is honestly exercised via the empty-state path rather than faked. Task 7
+validated the full spec: format/analyze/test all pass (803 tests, up from 772), all 5 nav-touching
+test files unchanged and passing, no `X-API-Key` usage added. `state.json` block `BU.13.E` flipped
+to closed. Next: `BU.13.F` — states, motion and density pass.
+
+```
+29c8d9c docs: update docs for 13.E-live-runs
+317ca81 feat: implement 13.E-live-runs-task6
+eaca2b0 feat: implement 13.E-live-runs-task5
+1e2aad1 feat: implement 13.E-live-runs-task4
+dc92260 feat: implement 13.E-live-runs-task3
+1fd6ea4 feat: implement 13.E-live-runs-task2
+8239ae3 feat: implement 13.E-live-runs-task1
+e0895bf BU.13.D — Portfolio (Dashboard rebuilt as a ranked instrument) (#7)
+```
+
 `13.D-portfolio-instrument` (`BU.13.D` — Portfolio, Dashboard rebuilt as a ranked instrument)
 closed — all 7 tasks passed, end-of-run review **PASS**. Task 1 added `last_touched` to
 `BoardBlockDto` as a nullable `DateTime` (parsed via `DateTime.tryParse`, degrading to null rather

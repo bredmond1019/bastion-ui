@@ -14,7 +14,7 @@ related: [architecture, api-reference]
 
 All screens live in `lib/screens/`. Routing is handled by `BastionApp.onGenerateRoute`
 in `lib/main.dart`; the app's root shell (`HomeShell` → `_ConnectedBody`) hosts a
-bottom `NavigationBar` with four tabs.
+bottom `NavigationBar` with five tabs.
 
 ## `HomeShell` (`lib/main.dart`)
 
@@ -25,7 +25,7 @@ renders `ConnectionBanner` above either a "Configure a connection" placeholder o
 
 ### `_ConnectedBody` (private, `lib/main.dart`)
 
-Rendered once the socket/API are live. `IndexedStack` of four tabs so all stay mounted:
+Rendered once the socket/API are live. `IndexedStack` of five tabs so all stay mounted:
 
 | Tab | Screen | Icon |
 |---|---|---|
@@ -33,6 +33,7 @@ Rendered once the socket/API are live. `IndexedStack` of four tabs so all stay m
 | 1 | `SessionsListScreen` | `Icons.list` |
 | 2 | `DashboardScreen` | `Icons.dashboard` |
 | 3 | `QuickActionsScreen` | `Icons.flash_on` |
+| 4 | `RunsScreen` | `Icons.play_circle_outline` |
 
 Also activates `notificationWiringProvider` and
 `workflowDoneNotificationWiringProvider`, and shows a foreground `SnackBar` on
@@ -146,6 +147,28 @@ picker for inject, name/dir/model fields for spawn); on success it calls
 `BastionApi.postCommand` and navigates to `/sessions/<name>` using the
 server-returned session id. `ApiError`/`FatalAuthError` are surfaced inline in the sheet
 without navigating.
+
+## `RunsScreen` (BU.13.E)
+
+Tab 4. Watches `runsProvider` (`state/runs_provider.dart`) — REST-seeded via
+`BastionApi.getRuns()` then kept live over the bearer-authed `"runs"` WS topic,
+applying `run_transition` events (a `terminal: true` transition removes the run; every
+other status, including `suspended`, upserts it in place). Renders one row per
+`RunSummaryDto` with a status badge (`_RunStatusVisual`: a `StatusTones` tone plus a
+distinct icon per wire status, not colour alone) and an `AgeChip`.
+
+Tapping a row drills in (internal screen state, not a pushed route) to that run's
+`GET /api/runs/{id}` node list, rendering each `NodeTransitionDto` as a vertical row —
+a DAG view is out of scope for this block. `GET /api/runs` returning `200 []` (no
+engine mounted) renders a real explanatory empty state, never an error or an endless
+spinner. `suspended` renders in the same live `active` tone as `running` (with a pause
+icon instead of a play icon) so it never reads as finished alongside the settled
+`success`/`failed`/`cancelled`/`budget_halted` tones.
+
+See `lib/screens/runs_screen.dart`'s doc comment and `test/e2e/runs_ws_e2e_test.dart`
+for the real-server e2e cross-check (asserts the empty-state path honestly — the dev
+harness here has no engine mounted, so the live-update half of the flow isn't
+exercised e2e).
 
 ## Route table (`BastionApp.onGenerateRoute`)
 
