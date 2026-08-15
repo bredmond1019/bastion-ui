@@ -47,6 +47,8 @@ REST client for `http://<host>:<port>`. Every request sends `Authorization: Bear
 | `getAttention({scope, tier})` | `GET /api/attention` | `AttentionDto` | stale-carryover/aging-backlog/orphaned-captures lanes |
 | `getDocsTree(repo, {path})` | `GET /api/docs/{repo}/tree` | `DocTreeDto` | Allowlisted markdown tree, optionally rooted at `path` |
 | `getDocsFile(repo, {path})` | `GET /api/docs/{repo}/file` | `DocFileDto` | Raw markdown content; server rejects traversal paths (§16.2) with `ApiError` |
+| `getRuns()` | `GET /api/runs` | `List<RunSummaryDto>` | Live + recent SDLC workflow runs; `200 []` is a valid "no engine mounted" empty state, not an error |
+| `getRun(id)` | `GET /api/runs/{id}` | `RunStateDto` | Full run detail incl. `List<NodeTransitionDto>` |
 
 `dispose()` releases the underlying `IoHttpTransport`'s socket connections.
 
@@ -62,6 +64,7 @@ REST client for `http://<host>:<port>`. Every request sends `Authorization: Bear
 - `BoardDto { scope, tier?, lanes, repos, stale }`, `BoardLaneDto { now, next, blocked, deferred, finished }` (five `List<BoardBlockDto>`, each defaulting to `[]` when absent), `BoardBlockDto { id, title, repo, status?, blockedBy, epics, wave?, dependentCount?, ready?, unmetCount?, lastTouched? }` — `models/board_dto.dart`, mirroring serve-api.md §13 (`GET /api/board`). The three graph-gated fields are `null` unless the request passed `?graph=true` — `null` means "not requested", never a fabricated `false`/`0`. `lastTouched` is a nullable `DateTime` parsed from the wire's ISO string via `DateTime.tryParse` (never `DateTime.parse`, so a malformed string degrades to `null` instead of throwing); `null` unconditionally means "never worked", never "worked long ago". `blockedBy` decodes each `okf_core::BlockedBy` variant it recognises (`BlockDepDto`, `ExternalDepDto`, `OperatorDepDto`, `ApprovalDepDto`) and falls back to `UnknownBlockedByDto` (raw map) for shapes not yet on the wire, mirroring `frame.dart`'s `UnknownFrame` pattern.
 - `AttentionDto { scope?, tier?, asOf, lanes, thresholds }`, `AttentionLanesDto { staleCarryover, agingBacklog, orphanedCaptures }` (each optional on the wire, defaulting to `[]`), `AttentionCarryoverDto { repo, slug, kind, text, clearsWhen?, created?, reviewed?, ageDays?, thresholdDays, lane, priority?, effectivePriority?, unmetBlocks, findingId?, clearsWhenSatisfied }`, `AttentionBacklogDto { repo, slug, title, kind, status, notes?, created?, reviewed?, ageDays, thresholdDays }` (backs both `agingBacklog` and `orphanedCaptures`), `AttentionThresholdsDto` — `models/attention_dto.dart`, mirroring serve-api.md §15 (`GET /api/attention`). `ageDays` on the carryover DTO is nullable — `null` means "no age known" (snoozed / no parseable anchor date), never `0`.
 - `DocTreeDto { repo, root, entries }`, `DocEntryDto { path, name, isDir }`, `DocFileDto { repo, path, content, bytes, modified? }` — `models/docs_dto.dart`, mirroring serve-api.md §16 (`GET /api/docs/{repo}/tree`, `GET /api/docs/{repo}/file`). `content` is raw, already-traversal-checked markdown; the client never sanitises or rewrites paths (the server owns that, §16.2).
+- `RunSummaryDto { runId, workflowType?, status, specSlug?, startedAt?, updatedAt?, repo? }` — one row from `GET /api/runs`. `RunStateDto { runId, event?, metadata?, nodes: List<NodeTransitionDto> }` — `GET /api/runs/{id}` detail; `nodes` is one entry per node class in `TaskContext::node_runs`, sorted by class name, `[]` when none recorded. `NodeTransitionDto { node, status, startedAt?, completedAt?, error?, input?, output?, usage: RunUsageDto? }`, `RunUsageDto { inputTokens?, outputTokens?, model }` — `models/run_dto.dart`, mirroring serve-api.md §14, BU.13.E. Status fields (`RunSummaryDto.status`, `NodeTransitionDto.status`) decode as raw `String` (never an enum), so an unrecognised wire status can never throw.
 
 All DTOs live in pure-Dart files (no Flutter imports) with `fromJson`/`toJson` and are
 unit-tested for round-trip decoding in `test/models/`.
@@ -106,7 +109,9 @@ Manages `ws://<host>:<port>/ws` with capped exponential backoff reconnect (1s, 2
 
 ### Client → server frame encoders (`ClientFrames`)
 
-- `subscribe(topic)` / `unsubscribe(topic)` — topics: `"sessions"`, `"pane:<name>"`.
+- `subscribe(topic)` / `unsubscribe(topic)` — topics: `"sessions"`, `"pane:<name>"`,
+  `"runs"` (bearer-authed, BU.13.E — `state/runs_provider.dart` subscribes once at
+  construction and unsubscribes once on dispose).
 - `send({session, keys})` — literal key sequence.
 - `sendKey({session, key})` — single symbolic key.
 
@@ -118,3 +123,11 @@ Manages `ws://<host>:<port>/ws` with capped exponential backoff reconnect (1s, 2
   workflow for a repo finished; repo-scoped events carry `session: ""` and the repo
   name / spec slug / status live in `extra['repo']` / `extra['spec_slug']` /
   `extra['status']`.
+- `run_transition` (`state/runs_provider.dart`, BU.13.E) — a run's status changed;
+  decoded via the generic `EventFrame` (`extra` carries the run payload). A
+  `terminal: true` transition removes the run from `runsProvider`'s list; every other
+  status (including `suspended`) upserts it in place — note `terminal` here is
+  lifecycle-terminal, the opposite of the engine's own wire-terminal flag.
+- `run_stream_status` (BU.13.E) — engine-availability signal on the `"runs"` topic;
+  not currently surfaced by `runsProvider` (an empty run list alone renders `RunsScreen`'s
+  no-engine empty state).
