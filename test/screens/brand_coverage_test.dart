@@ -34,11 +34,12 @@ import 'package:bastion_ui/services/bastion_socket.dart';
 import 'package:bastion_ui/state/connection_provider.dart'
     show secureStorageProvider;
 import 'package:bastion_ui/state/events_provider.dart';
-import 'package:bastion_ui/state/repos_provider.dart';
 import 'package:bastion_ui/state/sessions_provider.dart';
 import 'package:bastion_ui/state/workflows_provider.dart';
 import 'package:bastion_ui/theme/app_theme.dart';
 import 'package:bastion_ui/widgets/brand/brand.dart';
+
+import '../support/fake_http_transport.dart';
 
 // ---------------------------------------------------------------------------
 // Shared fakes (mirror the per-screen test files' fixtures)
@@ -55,14 +56,6 @@ class _FakeNeedsInputNotifier extends StateNotifier<Set<String>>
 
   @override
   void clear(String session) {}
-}
-
-class _FakeRepoListNotifier extends StateNotifier<List<RepoSummaryDto>>
-    implements RepoListNotifier {
-  _FakeRepoListNotifier(super.state);
-
-  @override
-  Future<void> refresh() async {}
 }
 
 class _FakeRepoWorkflowsNotifier extends StateNotifier<RepoWorkflowsState>
@@ -258,26 +251,51 @@ void main() {
     });
 
     testWidgets('DashboardScreen renders a brand primitive', (tester) async {
-      const repos = [
-        RepoSummaryDto(name: 'alpha', now: 'shipping', hasHandoff: false),
-      ];
+      // `BU.13.D` task 3: the screen was rebuilt onto `briefingBoardProvider`
+      // (reused, not a new fetch) rather than `reposProvider` — it now
+      // needs `bastionApiProvider` set, same as `RepoDetailScreen` below.
+      // Uses the route-aware `FakeHttpTransport` (not this file's local
+      // `_FakeHttpTransport`, which always answers `204`/empty and cannot
+      // produce a decodable `BoardDto`) so `GET /api/board` resolves to a
+      // real tiered board and the screen renders past its loading/error
+      // states into the `Eyebrow`/`SeverityRow` tree the sweep checks for.
+      final boardTransport = FakeHttpTransport();
+      boardTransport.on(
+        'GET',
+        '/api/board',
+        status: 200,
+        body: {
+          'scope': 'hq',
+          'lanes': <String, dynamic>{},
+          'repos': [
+            {
+              'repo': 'alpha',
+              'lanes': {
+                'now': [
+                  {'id': 'A.1', 'title': 'Ship it', 'repo': 'alpha'},
+                ],
+              },
+            },
+          ],
+          'stale': false,
+        },
+      );
+      final api = BastionApi(
+        host: 'test-host',
+        port: 4317,
+        token: 'test-token',
+        transport: boardTransport,
+      );
       await tester.pumpWidget(
         ProviderScope(
-          overrides: [
-            reposProvider.overrideWith((ref) => _FakeRepoListNotifier(repos)),
-            repoWorkflowsProvider('alpha').overrideWith(
-              (ref) => _FakeRepoWorkflowsNotifier(
-                const RepoWorkflowsState(loading: false),
-                repoName: 'alpha',
-              ),
-            ),
-          ],
+          overrides: [bastionApiProvider.overrideWith((ref) => api)],
           child: MaterialApp(
             theme: AppTheme.dark,
             home: const DashboardScreen(),
           ),
         ),
       );
+      await tester.pump();
       await tester.pump();
 
       await _expectBrandPrimitivePresent(tester);
@@ -296,9 +314,20 @@ void main() {
         momentumImprove: 'momentum improve',
         momentumRecurring: 'momentum recurring',
       );
+      final api = BastionApi(
+        host: 'test-host',
+        port: 4317,
+        token: 'test-token',
+        transport: _FakeHttpTransport(),
+      );
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
+            // `BU.13.C` task 3 wires RepoDetailScreen's stat row to
+            // `repoBoardProvider`, which reads `bastionApiProvider` — must
+            // be set for the screen to build at all now, same as the other
+            // screens in this sweep.
+            bastionApiProvider.overrideWith((ref) => api),
             repoWorkflowsProvider('alpha').overrideWith(
               (ref) => _FakeRepoWorkflowsNotifier(
                 const RepoWorkflowsState(

@@ -11,6 +11,43 @@ timestamp: "2026-08-14T11:52:00Z"
 
 ---
 
+## [run: 2026-08-15]
+
+`13.D-portfolio-instrument` (`BU.13.D` — Portfolio, Dashboard rebuilt as a ranked instrument)
+closed — all 7 tasks passed, end-of-run review **PASS**. Task 1 added `last_touched` to
+`BoardBlockDto` as a nullable `DateTime` (parsed via `DateTime.tryParse`, degrading to null rather
+than throwing on a malformed wire string), documented to mean "never worked" unconditionally at
+the single-block level. Task 2 added `lib/state/portfolio_ranking.dart`: a pure, Flutter-free
+`rankPortfolio()` tiering repos into needsAttention/active/quiet from a sealed `RepoRecency`
+(`Known` vs `NeverWorked`) so a never-worked repo can never be mistaken for stale, with 18 new
+unit tests. Task 3 rebuilt `DashboardScreen` onto `rankPortfolio()`, replacing the old flat
+`reposProvider` list with Eyebrow-headed tiers of `SeverityRow`s carrying a `LaneBar`
+(done/now/blocked/next); reused the existing `briefingBoardProvider` rather than adding a second
+board fetch. Task 4 added an `AgeChip`/"not started" chip and a 7-day activity `Sparkline` per
+repo row, derived client-side from real per-block `last_touched` timestamps (omitted entirely for
+repos with no activity in-window). Task 5 collapsed the quiet tier to a tap-to-expand summary row
+and fixed the `StatusPill` tone mapping so an active/RUNNING repo reads louder than an idle/ON
+TRACK one, per D4 constraint 3. Task 6 added a real-server e2e test
+(`test/e2e/portfolio_e2e_test.dart`, self-skips without a `bastion` binary), which surfaced a
+legitimate real-fleet case (`business` landing in needs-attention while never-worked, via an open
+gate) that sharpened the test's guard rather than exposing a bug. Task 7 confirmed the full
+validation suite: `dart format` clean, `flutter analyze` clean, `flutter test --exclude-tags e2e`
+773 passed (+30 over the pre-spec baseline of 743), and confirmed the sole `DateTime.now()` call
+sits in `initState` (captured once, threaded down), not `build()` or `portfolio_ranking.dart`.
+Next: `BU.13.E` (Live runs — read + runs WebSocket topic).
+
+```
+d4ca2ef docs: update docs for 13.D-portfolio-instrument
+652c7f5 feat: implement 13.D-portfolio-instrument-task6
+d01c12b feat: implement 13.D-portfolio-instrument-task5
+a48390e feat: implement 13.D-portfolio-instrument-task4
+3b98550 feat: implement 13.D-portfolio-instrument-task3
+68f1e8f feat: implement 13.D-portfolio-instrument-task2
+6f63003 feat: implement 13.D-portfolio-instrument-task1
+```
+
+---
+
 ## [run: 2026-08-14]
 
 `13.B-briefing-screen` (`BU.13.B` — The Briefing, new home surface) closed — all 9 tasks passed,

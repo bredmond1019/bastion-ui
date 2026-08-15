@@ -2,6 +2,8 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:bastion_ui/models/board_dto.dart';
 
+import '../support/wire_fixtures.dart';
+
 void main() {
   group('BoardBlockDto', () {
     test('fully-populated payload including all three graph fields', () {
@@ -33,6 +35,29 @@ void main() {
       expect(block.unmetCount, 0);
     });
 
+    test('payload WITH last_touched decodes to a known DateTime', () {
+      final block = BoardBlockDto.fromJson(boardBlockFullFixture);
+
+      expect(block.lastTouched, isNotNull);
+      expect(block.lastTouched, DateTime.parse('2026-08-10T12:00:00Z'));
+    });
+
+    test('payload WITHOUT last_touched at all: null, never-worked, '
+        'does not throw', () {
+      final block = BoardBlockDto.fromJson(boardBlockMinimalFixture);
+
+      expect(block.lastTouched, isNull);
+    });
+
+    test('some blocks have last_touched and some do not — each decodes '
+        'independently without conflating absence with the other', () {
+      final withTouch = BoardBlockDto.fromJson(boardBlockFullFixture);
+      final withoutTouch = BoardBlockDto.fromJson(boardBlockMinimalFixture);
+
+      expect(withTouch.lastTouched, isNotNull);
+      expect(withoutTouch.lastTouched, isNull);
+    });
+
     test('same payload without ?graph=1: all three graph fields null, '
         'distinguishable from zero/false', () {
       final block = BoardBlockDto.fromJson({
@@ -48,6 +73,7 @@ void main() {
       expect(block.dependentCount, isNull);
       expect(block.ready, isNull);
       expect(block.unmetCount, isNull);
+      expect(block.lastTouched, isNull);
       // Explicitly assert null is not conflated with a falsy/zero value.
       expect(block.dependentCount == 0, isFalse);
       expect(block.ready == false, isFalse);
@@ -68,6 +94,7 @@ void main() {
       expect(block.dependentCount, isNull);
       expect(block.ready, isNull);
       expect(block.unmetCount, isNull);
+      expect(block.lastTouched, isNull);
     });
 
     test('an unrecognised blocked_by entry shape decodes without throwing', () {

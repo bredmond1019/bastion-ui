@@ -10,12 +10,44 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:bastion_ui/models/repo_status_dto.dart';
 import 'package:bastion_ui/screens/repo_detail_screen.dart';
+import 'package:bastion_ui/services/bastion_api.dart';
+import 'package:bastion_ui/state/sessions_provider.dart'
+    show bastionApiProvider;
 import 'package:bastion_ui/state/workflows_provider.dart';
 import 'package:bastion_ui/widgets/workflow_progress.dart';
 
 // ---------------------------------------------------------------------------
 // Fakes
 // ---------------------------------------------------------------------------
+
+/// A no-op transport for `bastionApiProvider` — this file's tests exercise
+/// the status/handoff/workflow fields, not `repoBoardProvider` (`BU.13.C`
+/// task 1), but the screen now watches it as of task 3's stat row, so
+/// `bastionApiProvider` must resolve to *something* for the screen to build
+/// at all. A 204/empty response resolves `repoBoardProvider` to its error
+/// state, which none of these tests assert on.
+final class _FakeHttpTransport implements HttpTransport {
+  ({int statusCode, String body}) _consume() => (statusCode: 204, body: '');
+
+  @override
+  Future<({int statusCode, String body})> get(
+    String url, {
+    Map<String, String> headers = const {},
+  }) async => _consume();
+
+  @override
+  Future<({int statusCode, String body})> post(
+    String url, {
+    Map<String, String> headers = const {},
+    String? body,
+  }) async => _consume();
+
+  @override
+  Future<({int statusCode, String body})> delete(
+    String url, {
+    Map<String, String> headers = const {},
+  }) async => _consume();
+}
 
 class _FakeRepoWorkflowsNotifier extends StateNotifier<RepoWorkflowsState>
     implements RepoWorkflowsNotifier {
@@ -54,6 +86,14 @@ Widget _buildScreen({
 }) {
   return ProviderScope(
     overrides: [
+      bastionApiProvider.overrideWith(
+        (ref) => BastionApi(
+          host: 'test-host',
+          port: 4317,
+          token: 'test-token',
+          transport: _FakeHttpTransport(),
+        ),
+      ),
       repoWorkflowsProvider(repoName).overrideWith(
         (ref) => _FakeRepoWorkflowsNotifier(workflowsState, repoName: repoName),
       ),
@@ -132,6 +172,23 @@ void main() {
     });
 
     testWidgets('renders a workflow progress row per entry', (tester) async {
+      // Task 4 (BU.13.C) added the now/next/blocked stat row + block-lane
+      // rows above the status table, lengthening the screen's `ListView`
+      // enough that the pre-existing default test viewport (800x600) no
+      // longer materializes the workflow-progress rows in the `SliverList`
+      // — a task-boundary defect (see the spec's Amendment Log), not a
+      // screen defect. Widen the viewport rather than shrinking the screen:
+      // the rows still render at real device sizes, this just gives the
+      // `SliverList` enough room to lay them all out in one pump.
+      final originalSize = tester.view.physicalSize;
+      final originalRatio = tester.view.devicePixelRatio;
+      tester.view.physicalSize = const Size(800, 3000);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(() {
+        tester.view.physicalSize = originalSize;
+        tester.view.devicePixelRatio = originalRatio;
+      });
+
       await tester.pumpWidget(
         _buildScreen(
           workflowsState: RepoWorkflowsState(

@@ -104,11 +104,18 @@ as its own route) the AppBar's implied back button is suppressed (BU.4.A).
 
 ## `DashboardScreen`
 
-Tab 2. Watches `reposProvider` (workspace-registry repo list, sorted by name).
-Each row (`_RepoRow`) additionally watches `repoWorkflowsProvider(repo.name)` to derive
-a `StatusBadge` — `RepoBadgeState.inFlight` if any workflow has `status == 'running'`,
-else `RepoBadgeState.hasHandoff` if `repo.hasHandoff`, else `RepoBadgeState.idle`.
-Pull-to-refresh (`RefreshIndicator`) calls `reposProvider`'s `RepoListNotifier.refresh`.
+Tab 2. Watches `briefingBoardProvider` (`?graph=true`, root-scope — the same board
+fetch the Briefing tab uses) and runs it through `rankPortfolio()`
+(`lib/state/portfolio_ranking.dart`), which groups every repo into one of three
+Eyebrow-headed tiers — **Needs attention** / **Active** / **Quiet** — ranked by
+blocked-block count, open gates, and staleness. Each repo renders as a `SeverityRow`
+with a trailing `LaneBar` (done/now/blocked/next counts), a `StatusPill` (tone fixed
+per D4 constraint 3 — active reads louder than idle), an `AgeChip` derived from the
+repo's newest block `lastTouched` (or a "not started" chip when every block is
+never-worked), and a `Sparkline` of the last 7 days of block activity (omitted when the
+repo had no activity in that window). The Quiet tier collapses to a single
+tap-to-expand summary row (first 3 names + "+N more") by default, regardless of entry
+count. `now` is captured once in `initState`, never reread from the wall clock.
 Tapping a row navigates to `/repos/<name>` via `repoDetailRouteName(name)`.
 
 ## `RepoDetailScreen`

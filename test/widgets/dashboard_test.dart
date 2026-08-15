@@ -1,84 +1,105 @@
-// Widget tests for DashboardScreen.
+// Widget tests for DashboardScreen (`BU.13.D` task 3).
 //
-// Overrides `reposProvider` and (per-repo) `repoWorkflowsProvider` directly
-// with fake StateNotifiers (no real socket/API involved) so these tests
-// exercise only the rendering + badge logic — mirrors the override style
-// established by `sessions_list_test.dart`.
+// The screen was rebuilt onto `lib/state/portfolio_ranking.dart` (task 2):
+// it now reads `briefingBoardProvider` (`briefing_provider.dart`, reused
+// rather than rebuilt — see `dashboard_screen.dart`'s doc comment) and
+// renders repos as tiered `SeverityRow`s with a `LaneBar` trailing detail,
+// in place of the old flat `reposProvider`/`repoWorkflowsProvider` list
+// with a one-word `StatusPill`.
 //
-// Re-skinned in `BU.10.C` task 4: the repo row's status now renders through
-// `StatusPill` (a labelled pill) rather than the icon-only `StatusBadge`, so
-// these tests assert on the pill's label text instead of a `find.byIcon`.
+// `briefingBoardProvider` is driven through a real `BastionApi` backed by
+// `FakeHttpTransport` (mirrors `test/screens/briefing_reachable_test.dart`
+// and `test/main_wiring_test.dart`'s pattern for provider-owning screens)
+// rather than a hand-rolled fake `StateNotifier` — `BriefingSectionNotifier`
+// is concrete, not an interface, so overriding the provider directly would
+// mean subclassing it just to seed a state, and this repo already has an
+// established fixture for driving it end-to-end.
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:bastion_ui/models/repo_status_dto.dart';
 import 'package:bastion_ui/screens/dashboard_screen.dart';
-import 'package:bastion_ui/state/repos_provider.dart';
-import 'package:bastion_ui/state/workflows_provider.dart';
+import 'package:bastion_ui/services/bastion_api.dart';
+import 'package:bastion_ui/state/sessions_provider.dart'
+    show bastionApiProvider;
 import 'package:bastion_ui/theme/app_theme.dart';
 import 'package:bastion_ui/widgets/brand/brand.dart';
+import 'package:bastion_ui/widgets/instrument/instrument.dart';
+
+import '../support/fake_http_transport.dart';
 
 // ---------------------------------------------------------------------------
-// Fakes
+// Fixtures
 // ---------------------------------------------------------------------------
 
-class _FakeRepoListNotifier extends StateNotifier<List<RepoSummaryDto>>
-    implements RepoListNotifier {
-  _FakeRepoListNotifier(super.state);
+Map<String, dynamic> _blockJson(String id, String repo) => {
+  'id': id,
+  'title': 'Block $id',
+  'repo': repo,
+};
 
-  @override
-  Future<void> refresh() async {}
+/// A board response with two repos: `alpha` (needs-attention — a blocked
+/// block with an operator gate), `beta` (active — one `now` block).
+/// `gamma` (quiet — no blocks at all) rounds out the fixture so all three
+/// tiers render.
+final Map<String, dynamic> _threeRepoBoardJson = {
+  'scope': 'hq',
+  'lanes': const {},
+  'repos': [
+    {
+      'repo': 'alpha',
+      'lanes': {
+        'blocked': [
+          {
+            ..._blockJson('A.1', 'alpha'),
+            'blocked_by': [
+              {
+                'type': 'operator',
+                'slug': 'op-slug',
+                'exit': 'sign-off',
+                'start': '2026-08-01',
+              },
+            ],
+          },
+        ],
+        'finished': [_blockJson('A.2', 'alpha'), _blockJson('A.3', 'alpha')],
+      },
+    },
+    {
+      'repo': 'beta',
+      'lanes': {
+        'now': [_blockJson('B.1', 'beta')],
+      },
+    },
+    {'repo': 'gamma', 'lanes': const {}},
+  ],
+  'stale': false,
+};
+
+FakeHttpTransport _transportWithBoard(Object boardBody) {
+  final t = FakeHttpTransport();
+  t.on('GET', '/api/board', status: 200, body: boardBody);
+  return t;
 }
 
-class _FakeRepoWorkflowsNotifier extends StateNotifier<RepoWorkflowsState>
-    implements RepoWorkflowsNotifier {
-  _FakeRepoWorkflowsNotifier(super.state, {required this.repoName});
-
-  @override
-  final String repoName;
-
-  /// Simulates what `RepoWorkflowsNotifier._onEvent` does when a matching
-  /// `workflow_done` event triggers a refetch: replace the workflow list
-  /// with one that no longer reports a `running` entry.
-  void markDone(List<WorkflowStateDto> refreshedWorkflows) {
-    state = state.copyWith(workflows: refreshedWorkflows, loading: false);
-  }
-}
-
-WorkflowStateDto _workflow({required String status}) => WorkflowStateDto(
-  specSlug: '2.A-dashboard-repo-detail',
-  branch: '2.A-dashboard-repo-detail-flow',
-  status: status,
-  currentTask: 4,
-  startedAt: '2026-07-02T10:00:00Z',
-  updatedAt: '2026-07-02T10:15:00Z',
-);
-
-Widget _buildScreen({
-  required List<RepoSummaryDto> repos,
-  Map<String, RepoWorkflowsState> workflowsByRepo = const {},
-  Map<String, _FakeRepoWorkflowsNotifier>? capturedNotifiers,
+Widget _buildScreen(
+  FakeHttpTransport transport, {
+  RouteFactory? onGenerateRoute,
 }) {
-  final overrides = <Override>[
-    reposProvider.overrideWith((ref) => _FakeRepoListNotifier(repos)),
-  ];
-
-  for (final repo in repos) {
-    final notifier = _FakeRepoWorkflowsNotifier(
-      workflowsByRepo[repo.name] ?? const RepoWorkflowsState(loading: false),
-      repoName: repo.name,
-    );
-    capturedNotifiers?[repo.name] = notifier;
-    overrides.add(
-      repoWorkflowsProvider(repo.name).overrideWith((ref) => notifier),
-    );
-  }
-
+  final api = BastionApi(
+    host: 'test-host',
+    port: 4317,
+    token: 'test-token',
+    transport: transport,
+  );
   return ProviderScope(
-    overrides: overrides,
-    child: MaterialApp(theme: AppTheme.dark, home: const DashboardScreen()),
+    overrides: [bastionApiProvider.overrideWith((ref) => api)],
+    child: MaterialApp(
+      theme: AppTheme.dark,
+      home: const DashboardScreen(),
+      onGenerateRoute: onGenerateRoute,
+    ),
   );
 }
 
@@ -88,148 +109,141 @@ Widget _buildScreen({
 
 void main() {
   group('DashboardScreen', () {
-    testWidgets('renders one row per repo with the correct badges', (
-      tester,
-    ) async {
-      const repos = [
-        RepoSummaryDto(
-          name: 'alpha',
-          now: 'shipping task 4',
-          hasHandoff: false,
-        ),
-        RepoSummaryDto(name: 'beta', now: 'idle', hasHandoff: true),
-      ];
-
+    testWidgets('renders a tier heading with a count per tier, and one row '
+        'per repo', (tester) async {
       await tester.pumpWidget(
-        _buildScreen(
-          repos: repos,
-          workflowsByRepo: {
-            'alpha': RepoWorkflowsState(
-              workflows: [_workflow(status: 'running')],
-              loading: false,
-            ),
-          },
-        ),
+        _buildScreen(_transportWithBoard(_threeRepoBoardJson)),
       );
       await tester.pump();
+      await tester.pump();
+
+      expect(find.text('NEEDS ATTENTION · 1'), findsOneWidget);
+      expect(find.text('ACTIVE · 1'), findsOneWidget);
+      expect(find.text('QUIET · 1'), findsOneWidget);
 
       expect(find.text('alpha'), findsOneWidget);
       expect(find.text('beta'), findsOneWidget);
+      // The quiet tier collapses to a summary row by default (task 5) —
+      // with a single quiet repo the summary text is just its name, so
+      // `gamma` is still findable without expanding.
+      expect(find.text('gamma'), findsOneWidget);
+
+      // gamma's row is collapsed, so only alpha's and beta's LaneBar/
+      // StatusPill render until the quiet tier is expanded.
+      expect(find.byType(LaneBar), findsNWidgets(2));
       expect(find.byType(StatusPill), findsNWidgets(2));
-      // alpha has a running workflow -> in-flight pill.
-      expect(find.text('IN FLIGHT'), findsOneWidget);
-      // beta has no running workflow but has_handoff -> handoff pill.
-      expect(find.text('HANDOFF'), findsOneWidget);
+
+      await tester.tap(
+        find.byKey(const ValueKey('portfolio-quiet-summary-tap')),
+      );
+      await tester.pumpAndSettle();
+
+      // One LaneBar trailing detail per row.
+      expect(find.byType(LaneBar), findsNWidgets(3));
+      // One StatusPill (inside each SeverityRow) per row.
+      expect(find.byType(StatusPill), findsNWidgets(3));
+    });
+
+    testWidgets(
+      "a needs-attention repo's LaneBar segments sum to its block total "
+      '(minus deferred)',
+      (tester) async {
+        await tester.pumpWidget(
+          _buildScreen(_transportWithBoard(_threeRepoBoardJson)),
+        );
+        await tester.pump();
+        await tester.pump();
+
+        final alphaCard = find.ancestor(
+          of: find.text('alpha'),
+          matching: find.byType(SeverityRow),
+        );
+        final laneBar = tester.widget<LaneBar>(
+          find.descendant(of: alphaCard, matching: find.byType(LaneBar)),
+        );
+
+        // alpha: 1 blocked, 2 finished (done), 0 now, 0 next.
+        expect(laneBar.done, 2);
+        expect(laneBar.now, 0);
+        expect(laneBar.blocked, 1);
+        expect(laneBar.next, 0);
+        expect(laneBar.done + laneBar.now + laneBar.blocked + laneBar.next, 3);
+      },
+    );
+
+    testWidgets('an active repo shows a RUNNING pill, a quiet repo shows '
+        'ON TRACK', (tester) async {
+      await tester.pumpWidget(
+        _buildScreen(_transportWithBoard(_threeRepoBoardJson)),
+      );
+      await tester.pump();
+      await tester.pump();
+
+      expect(find.text('RUNNING'), findsOneWidget);
+
+      // gamma's ON TRACK pill is inside the quiet tier's row, which is
+      // collapsed to a summary row by default (task 5) — expand it first.
+      await tester.tap(
+        find.byKey(const ValueKey('portfolio-quiet-summary-tap')),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('ON TRACK'), findsOneWidget);
     });
 
     testWidgets('shows empty state when there are no repos', (tester) async {
-      await tester.pumpWidget(_buildScreen(repos: const []));
+      await tester.pumpWidget(
+        _buildScreen(
+          _transportWithBoard(const {
+            'scope': 'hq',
+            'lanes': <String, dynamic>{},
+            'repos': <dynamic>[],
+            'stale': false,
+          }),
+        ),
+      );
+      await tester.pump();
       await tester.pump();
 
       expect(find.byType(StatusPill), findsNothing);
       expect(find.text('No repos registered'), findsOneWidget);
     });
 
-    testWidgets('idle repo with no handoff shows the idle pill', (
-      tester,
-    ) async {
-      const repos = [
-        RepoSummaryDto(
-          name: 'gamma',
-          now: 'nothing in flight',
-          hasHandoff: false,
-        ),
-      ];
-
-      await tester.pumpWidget(_buildScreen(repos: repos));
-      await tester.pump();
-
-      expect(find.text('IN FLIGHT'), findsNothing);
-      expect(find.text('HANDOFF'), findsNothing);
-      expect(find.text('IDLE'), findsOneWidget);
-    });
-
-    testWidgets(
-      'in-flight badge clears when a mocked workflow_done event fires '
-      'for that repo',
-      (tester) async {
-        const repos = [
-          RepoSummaryDto(
-            name: 'alpha',
-            now: 'shipping task 4',
-            hasHandoff: false,
-          ),
-        ];
-        final captured = <String, _FakeRepoWorkflowsNotifier>{};
-
-        await tester.pumpWidget(
-          _buildScreen(
-            repos: repos,
-            workflowsByRepo: {
-              'alpha': RepoWorkflowsState(
-                workflows: [_workflow(status: 'running')],
-                loading: false,
-              ),
-            },
-            capturedNotifiers: captured,
-          ),
-        );
-        await tester.pump();
-
-        expect(find.text('IN FLIGHT'), findsOneWidget);
-
-        // Simulate the `workflow_done` event triggering a refetch that
-        // reports the workflow as no longer running.
-        captured['alpha']!.markDone([_workflow(status: 'done')]);
-        await tester.pump();
-
-        expect(find.text('IN FLIGHT'), findsNothing);
-      },
-    );
-
     testWidgets('tapping a row navigates toward the repo detail route', (
       tester,
     ) async {
-      const repos = [
-        RepoSummaryDto(
-          name: 'alpha',
-          now: 'shipping task 4',
-          hasHandoff: false,
-        ),
-      ];
       String? pushedRoute;
-
-      final overrides = <Override>[
-        reposProvider.overrideWith((ref) => _FakeRepoListNotifier(repos)),
-        repoWorkflowsProvider('alpha').overrideWith(
-          (ref) => _FakeRepoWorkflowsNotifier(
-            const RepoWorkflowsState(loading: false),
-            repoName: 'alpha',
-          ),
-        ),
-      ];
-
       await tester.pumpWidget(
-        ProviderScope(
-          overrides: overrides,
-          child: MaterialApp(
-            theme: AppTheme.dark,
-            home: const DashboardScreen(),
-            onGenerateRoute: (settings) {
-              pushedRoute = settings.name;
-              return MaterialPageRoute<void>(
-                builder: (_) => const Scaffold(body: Text('detail')),
-              );
-            },
-          ),
+        _buildScreen(
+          _transportWithBoard(_threeRepoBoardJson),
+          onGenerateRoute: (settings) {
+            pushedRoute = settings.name;
+            return MaterialPageRoute<void>(
+              builder: (_) => const Scaffold(body: Text('detail')),
+            );
+          },
         ),
       );
       await tester.pump();
+      await tester.pump();
 
-      await tester.tap(find.text('alpha'));
+      await tester.tap(find.text('beta'));
       await tester.pumpAndSettle();
 
-      expect(pushedRoute, repoDetailRouteName('alpha'));
+      expect(pushedRoute, repoDetailRouteName('beta'));
+    });
+
+    testWidgets('shows an inline error with retry on a board fetch failure', (
+      tester,
+    ) async {
+      final t = FakeHttpTransport();
+      t.on('GET', '/api/board', status: 500, body: {'code': 'E001'});
+      await tester.pumpWidget(_buildScreen(t));
+      await tester.pump();
+      await tester.pump();
+
+      expect(find.byKey(const ValueKey('dashboard-retry')), findsOneWidget);
+      expect(find.text('No repos registered'), findsNothing);
     });
   });
 }

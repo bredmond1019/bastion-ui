@@ -130,6 +130,32 @@ FakeHttpTransport _makeHttpTransport() {
     status: 200,
     body: <dynamic>[],
   );
+  // `BU.13.D` task 3: DashboardScreen now reads `briefingBoardProvider`
+  // (`GET /api/board`) instead of `reposProvider`/`repoWorkflowsProvider`.
+  t.on(
+    'GET',
+    '/api/board',
+    status: 200,
+    body: {
+      'scope': 'hq',
+      'lanes': <String, dynamic>{},
+      'repos': [
+        {
+          'repo': 'bastion-ui',
+          'lanes': {
+            'now': [
+              {
+                'id': 'BU.1.A',
+                'title': 'Wiring dashboard',
+                'repo': 'bastion-ui',
+              },
+            ],
+          },
+        },
+      ],
+      'stale': false,
+    },
+  );
   return t;
 }
 
@@ -373,6 +399,9 @@ void main() {
         ),
       ),
     );
+    await tester.pump();
+    // `BU.13.D` task 3: DashboardScreen's board fetch is async (unlike the
+    // old synchronous-in-tests `reposProvider` seed) — flush it.
     await tester.pump();
 
     // The dashboard screen itself is reachable and REST-seeded.
