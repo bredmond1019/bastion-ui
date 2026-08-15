@@ -26,6 +26,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/board_dto.dart';
 import '../models/repo_status_dto.dart';
+import '../state/blocked_by_label.dart';
 import '../state/briefing_model.dart';
 import '../state/repo_board_provider.dart';
 import '../state/sessions_provider.dart' show bastionApiProvider;
@@ -81,6 +82,8 @@ class RepoDetailScreen extends ConsumerWidget {
                 _RepoDetailHeading(repoName: repoName),
                 const SizedBox(height: 16),
                 RepoDetailStats(boardState: boardState),
+                const SizedBox(height: 16),
+                RepoDetailBlockLanes(boardState: boardState),
                 const SizedBox(height: 16),
                 if (status != null) _StatusTable(status: status),
                 if (status != null && status.hasHandoff) ...[
@@ -217,6 +220,147 @@ class RepoDetailStats extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// RepoDetailBlockLanes — task 4
+// ---------------------------------------------------------------------------
+
+/// One [SeverityRow] per block, grouped by lane under an [Eyebrow] label —
+/// the replacement for the comma-run paragraph the prose `RepoStatusDto`
+/// fields used to force (`BU.13.C` task 4), per the specimen's `cardline`
+/// rows (`from-inventory-to-instrument.html` §06).
+///
+/// Deliberately reads [BoardLaneDto]'s typed lane lists (via
+/// [repoBoardProvider]), never the prose `RepoStatusDto.now`/`next`/
+/// `blocked` strings — see `RepoDetailStats`'s doc comment for why.
+///
+/// Only non-empty lanes render a group here. A real "nothing in this lane"
+/// empty state (rather than simply omitting the group) is task 5's job —
+/// see that task's `repo_detail_empty_test.dart`.
+class RepoDetailBlockLanes extends StatelessWidget {
+  const RepoDetailBlockLanes({super.key, required this.boardState});
+
+  final BriefingSectionState<BoardLaneDto> boardState;
+
+  @override
+  Widget build(BuildContext context) {
+    final lanes = boardState.dataOrNull;
+    if (lanes == null) {
+      // Loading/error already surfaced by RepoDetailStats' em-dash stat
+      // row; this section simply has nothing to render yet.
+      return const SizedBox.shrink();
+    }
+
+    final groups = <(String laneId, String label, List<BoardBlockDto> blocks)>[
+      ('now', 'Now', lanes.now),
+      ('next', 'Next up', lanes.next),
+      ('blocked', 'Blocked', lanes.blocked),
+      ('deferred', 'Deferred', lanes.deferred),
+      ('finished', 'Finished', lanes.finished),
+    ];
+
+    final nonEmpty = groups.where((g) => g.$3.isNotEmpty).toList();
+    if (nonEmpty.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    return Column(
+      key: const ValueKey('repo-detail-block-lanes'),
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        for (final (laneId, label, blocks) in nonEmpty) ...[
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Eyebrow(label: label),
+          ),
+          for (final block in blocks) ...[
+            _RepoDetailBlockRow(laneId: laneId, block: block),
+            const SizedBox(height: 8),
+          ],
+          const SizedBox(height: 8),
+        ],
+      ],
+    );
+  }
+}
+
+/// One block's [SeverityRow]. Title leads; `id` sits secondary, in the meta
+/// sub-line rather than the headline. Readiness comes exclusively from
+/// [BoardBlockDto.ready] — never derived from `unmetCount == 0` — and a
+/// `null` `ready`/`dependentCount` renders as "unknown"/nothing, never a
+/// fabricated `false`/`0`.
+class _RepoDetailBlockRow extends StatelessWidget {
+  const _RepoDetailBlockRow({required this.laneId, required this.block});
+
+  final String laneId;
+  final BoardBlockDto block;
+
+  /// The row's severity + trailing pill. The `blocked` lane always reads
+  /// as critical regardless of `ready` (a block filed in the blocked lane
+  /// is, definitionally, blocked). Outside that lane, `ready` — and only
+  /// `ready` — decides: `true` reads calm/on-track, `false` reads warn
+  /// (waiting, but not lane-blocked), and `null` (graph data not
+  /// available) reads idle/unknown rather than asserting either state.
+  (SeverityRowSeverity, StatusPillTone, String) _readiness() {
+    if (laneId == 'blocked') {
+      return (SeverityRowSeverity.crit, StatusPillTone.blocked, 'BLOCKED');
+    }
+    return switch (block.ready) {
+      true => (SeverityRowSeverity.ok, StatusPillTone.onTrack, 'READY'),
+      false => (SeverityRowSeverity.warn, StatusPillTone.inProgress, 'WAITING'),
+      null => (SeverityRowSeverity.idle, StatusPillTone.inProgress, 'UNKNOWN'),
+    };
+  }
+
+  /// The meta sub-line: id (secondary position), wave, readiness wording,
+  /// what it waits on (blocked lane only, via task 2's exhaustive label
+  /// function), and dependent count — only rendered when NOT null, per
+  /// the "null is never a fabricated 0" rule.
+  String _meta() {
+    final parts = <String>[block.id];
+
+    if (block.wave != null) {
+      parts.add('wave ${block.wave}');
+    }
+
+    if (laneId == 'blocked') {
+      if (block.blockedBy.isNotEmpty) {
+        parts.add(blockedByLabel(block.blockedBy.first));
+      } else {
+        parts.add('blocked');
+      }
+      if (block.unmetCount != null) {
+        parts.add('${block.unmetCount} unmet');
+      }
+    } else {
+      parts.add(switch (block.ready) {
+        true => 'ready',
+        false => 'not ready',
+        null => 'readiness unknown',
+      });
+    }
+
+    if (block.dependentCount != null) {
+      final count = block.dependentCount;
+      parts.add('$count block${count == 1 ? '' : 's'} downstream');
+    }
+
+    return parts.join(' · ');
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final (severity, pillTone, pillLabel) = _readiness();
+    return SeverityRow(
+      key: ValueKey('repo-detail-block-row-${block.id}'),
+      severity: severity,
+      title: block.title,
+      pillTone: pillTone,
+      pillLabel: pillLabel,
+      meta: _meta(),
     );
   }
 }
