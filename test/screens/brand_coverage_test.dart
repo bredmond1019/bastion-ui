@@ -296,9 +296,20 @@ void main() {
         momentumImprove: 'momentum improve',
         momentumRecurring: 'momentum recurring',
       );
+      final api = BastionApi(
+        host: 'test-host',
+        port: 4317,
+        token: 'test-token',
+        transport: _FakeHttpTransport(),
+      );
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
+            // `BU.13.C` task 3 wires RepoDetailScreen's stat row to
+            // `repoBoardProvider`, which reads `bastionApiProvider` — must
+            // be set for the screen to build at all now, same as the other
+            // screens in this sweep.
+            bastionApiProvider.overrideWith((ref) => api),
             repoWorkflowsProvider('alpha').overrideWith(
               (ref) => _FakeRepoWorkflowsNotifier(
                 const RepoWorkflowsState(

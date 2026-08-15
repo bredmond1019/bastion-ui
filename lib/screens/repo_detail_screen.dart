@@ -24,12 +24,16 @@ library;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../models/board_dto.dart';
 import '../models/repo_status_dto.dart';
+import '../state/briefing_model.dart';
+import '../state/repo_board_provider.dart';
 import '../state/sessions_provider.dart' show bastionApiProvider;
 import '../state/workflows_provider.dart';
 import '../theme/tokens.dart';
 import '../theme/typography.dart';
 import '../widgets/brand/brand.dart';
+import '../widgets/instrument/instrument.dart';
 import '../widgets/markdown_view.dart';
 import '../widgets/workflow_progress.dart';
 
@@ -65,6 +69,7 @@ class RepoDetailScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final workflowsState = ref.watch(repoWorkflowsProvider(repoName));
     final status = workflowsState.status;
+    final boardState = ref.watch(repoBoardProvider(repoName));
 
     return Scaffold(
       appBar: AppBar(title: Text(repoName)),
@@ -74,6 +79,8 @@ class RepoDetailScreen extends ConsumerWidget {
               padding: const EdgeInsets.all(16),
               children: [
                 _RepoDetailHeading(repoName: repoName),
+                const SizedBox(height: 16),
+                RepoDetailStats(boardState: boardState),
                 const SizedBox(height: 16),
                 if (status != null) _StatusTable(status: status),
                 if (status != null && status.hasHandoff) ...[
@@ -143,6 +150,73 @@ class _RepoDetailHeading extends StatelessWidget {
         const SizedBox(height: 8),
         const HeadingRule(),
       ],
+    );
+  }
+}
+
+/// The repo detail's `now`/`next`/`blocked` stat row — three [StatTile]s
+/// drawn from [repoBoardProvider]'s typed lane counts (`BU.13.C` task 3),
+/// per the specimen's `bignum` row (`from-inventory-to-instrument.html`
+/// §06).
+///
+/// Deliberately reads lane **lengths**, never `RepoStatusDto.now`/`next`/
+/// `blocked` — those are narrative prose and can disagree with the typed
+/// records (that disagreement is the whole reason this block exists).
+///
+/// A plain [StatelessWidget] over an already-resolved
+/// `BriefingSectionState<BoardLaneDto>`, mirroring `briefing_screen.dart`'s
+/// `BriefingHeader` — testable with a bare fixture, no Riverpod/HTTP
+/// wiring required.
+class RepoDetailStats extends StatelessWidget {
+  const RepoDetailStats({super.key, required this.boardState});
+
+  final BriefingSectionState<BoardLaneDto> boardState;
+
+  /// A loading or errored board renders an em dash, never a fabricated
+  /// `"0"` — the count is unknown, not zero.
+  static String _format(int? count) => count == null ? '—' : '$count';
+
+  @override
+  Widget build(BuildContext context) {
+    final lanes = boardState.dataOrNull;
+    final unknown = lanes == null;
+    final blockedCount = unknown ? null : lanes.blocked.length;
+
+    return IntrinsicHeight(
+      key: const ValueKey('repo-detail-stats'),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Expanded(
+            child: StatTile(
+              value: _format(unknown ? null : lanes.now.length),
+              label: 'now',
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: StatTile(
+              value: _format(unknown ? null : lanes.next.length),
+              label: 'next',
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: StatTile(
+              value: _format(blockedCount),
+              label: 'blocked',
+              // Calm at zero ("nothing blocked" is reassurance, not an
+              // alert) and critical when there is something waiting.
+              // Unknown (loading/error) also stays neutral — the tone
+              // itself must never assert "danger" from a fact the app
+              // does not have.
+              severity: (blockedCount != null && blockedCount > 0)
+                  ? StatTileSeverity.danger
+                  : StatTileSeverity.neutral,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
