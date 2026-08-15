@@ -2,12 +2,41 @@
 type: Log
 title: BastionUI Development Log
 description: Chronological log of work completed for BastionUI.
-timestamp: "2026-08-14T11:52:00Z"
+timestamp: "2026-08-15T20:45:00Z"
 ---
 
 # Log — BastionUI
 
 *Append-only working log. One dated entry per session. Newest entries at the top.*
+
+---
+
+## [2026-08-15]
+
+### Phase 13 shipped end-to-end; first device verification against a mounted engine
+
+- **What:** Ran the re-sequenced Phase 13 chain to completion in one `/orchestrate` session — seven
+  blocks closed: `BU.11.A` (serve-api v0.30 contract layer; pin landed at v0.31 after upstream moved,
+  amendment logged), `BU.ticket.integration-test-tier` (routing fake HTTP transport + wire fixtures +
+  an integration tier inside the gating suite), `BU.13.A` (six instrument primitives), `BU.13.B` (the
+  Briefing, now tab 0, PR #6), `BU.13.C` (repo detail restructured — bailed at task 4 on a spec
+  task-boundary defect, spec corrected, resumed), `BU.13.D` (Portfolio rebuilt as a ranked
+  instrument, PR #7), `BU.13.E` (live runs over the bearer-authed `runs` WS topic, PR #8). Closed
+  operator gate G1 with `planning/decisions/D4-brand-system.md`, and decided the interactive accent
+  (`AppTokens.accent2`) against measured contrast. Reconciled `main` with `origin/main` after
+  discovering that in-place `sdlc-task` blocks never push, so PR #7's squash had swallowed `BU.13.C`.
+  Finished with a manual device verification: 11 screenshots in
+  `visual_smoke/runs/2026-08-15_133215/` against a `bastion serve` with the engine actually mounted —
+  the first time that has been done here.
+- **Why:** The brand pass exposed that the app rendered records, not state — twelve identical
+  dashboard rows, typed block records poured out as prose, and 14 of 26 serve-api routes unconsumed.
+  Phase 13 was authored to fix exactly that, and the ranking intelligence it needs (`ready`,
+  `dependent_count`, `last_touched`) was already computed and served, just never asked for. The
+  device run was to confirm the result on real hardware against the real corpus rather than trusting
+  a green suite — which is how `ConnectionBanner` shipped broken through every gate in a prior run.
+- **Refs:** PRs #6/#7/#8; `planning/decisions/D4-brand-system.md`;
+  `planning/orchestration-run/bastion-ui-brand-and-surfaces/{notes.md,review.md}` (24 numbered
+  findings + executed verification recipes); `planning/handoff.md`.
 
 ---
 
