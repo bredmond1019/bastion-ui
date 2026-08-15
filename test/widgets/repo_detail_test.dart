@@ -172,6 +172,23 @@ void main() {
     });
 
     testWidgets('renders a workflow progress row per entry', (tester) async {
+      // Task 4 (BU.13.C) added the now/next/blocked stat row + block-lane
+      // rows above the status table, lengthening the screen's `ListView`
+      // enough that the pre-existing default test viewport (800x600) no
+      // longer materializes the workflow-progress rows in the `SliverList`
+      // — a task-boundary defect (see the spec's Amendment Log), not a
+      // screen defect. Widen the viewport rather than shrinking the screen:
+      // the rows still render at real device sizes, this just gives the
+      // `SliverList` enough room to lay them all out in one pump.
+      final originalSize = tester.view.physicalSize;
+      final originalRatio = tester.view.devicePixelRatio;
+      tester.view.physicalSize = const Size(800, 3000);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(() {
+        tester.view.physicalSize = originalSize;
+        tester.view.devicePixelRatio = originalRatio;
+      });
+
       await tester.pumpWidget(
         _buildScreen(
           workflowsState: RepoWorkflowsState(
