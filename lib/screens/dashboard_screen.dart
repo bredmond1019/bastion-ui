@@ -55,6 +55,7 @@ import '../models/board_dto.dart';
 import '../state/briefing_model.dart';
 import '../state/briefing_provider.dart';
 import '../state/portfolio_ranking.dart';
+import '../theme/status_tones.dart';
 import '../theme/tokens.dart';
 import '../theme/typography.dart';
 import '../widgets/brand/brand.dart';
@@ -179,9 +180,10 @@ class _DashboardBody extends ConsumerWidget {
           _TierSection(
             label: 'Needs attention',
             entries: ranking.needsAttention,
+            now: now,
           ),
-          _TierSection(label: 'Active', entries: ranking.active),
-          _TierSection(label: 'Quiet', entries: ranking.quiet),
+          _TierSection(label: 'Active', entries: ranking.active, now: now),
+          _TierSection(label: 'Quiet', entries: ranking.quiet, now: now),
         ],
       ),
     );
@@ -216,10 +218,18 @@ class _DashboardHeading extends StatelessWidget {
 /// tier gets no heading, so "Active" never shows a "· 0" the operator
 /// would have to parse as good news.
 class _TierSection extends StatelessWidget {
-  const _TierSection({required this.label, required this.entries});
+  const _TierSection({
+    required this.label,
+    required this.entries,
+    required this.now,
+  });
 
   final String label;
   final List<PortfolioRepoEntry> entries;
+
+  /// Threaded straight through to [_RepoRow] — the same clock
+  /// [rankPortfolio] used, never re-read here.
+  final DateTime now;
 
   @override
   Widget build(BuildContext context) {
@@ -236,6 +246,7 @@ class _TierSection extends StatelessWidget {
             _RepoRow(
               key: ValueKey('portfolio-row-${entry.name}'),
               entry: entry,
+              now: now,
             ),
             const SizedBox(height: 8),
           ],
@@ -248,9 +259,15 @@ class _TierSection extends StatelessWidget {
 /// One repo row: a [SeverityRow] (severity stripe + `StatusPill` + meta
 /// line) with a [LaneBar] trailing detail, per specimen §05's `cardline`.
 class _RepoRow extends StatelessWidget {
-  const _RepoRow({super.key, required this.entry});
+  const _RepoRow({super.key, required this.entry, required this.now});
 
   final PortfolioRepoEntry entry;
+
+  /// The same clock [rankPortfolio] tiered against (captured once in
+  /// [_DashboardScreenState.initState]) — feeds [AgeChip.since] and
+  /// [_recentActivityValues] so a rebuild never reshuffles either
+  /// mid-scroll (task 2's determinism contract, task 4 AC).
+  final DateTime now;
 
   /// The row's severity — drives the stripe colour and the title's
   /// non-colour weight channel. A blocked or gated repo reads `crit`; a
@@ -324,6 +341,8 @@ class _RepoRow extends StatelessWidget {
       'LaneBar segment counts must sum to the repo block total (minus deferred)',
     );
 
+    final activity = _recentActivityValues(entry.repo, now);
+
     return InkWell(
       key: ValueKey('portfolio-row-tap-${entry.name}'),
       onTap: () =>
@@ -334,13 +353,122 @@ class _RepoRow extends StatelessWidget {
         pillTone: pillTone,
         pillLabel: pillLabel,
         meta: _meta,
-        trailingDetail: LaneBar(
-          done: entry.doneCount,
-          now: entry.nowCount,
-          blocked: entry.blockedCount,
-          next: entry.nextCount,
+        trailingDetail: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: LaneBar(
+                    done: entry.doneCount,
+                    now: entry.nowCount,
+                    blocked: entry.blockedCount,
+                    next: entry.nextCount,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                _RecencyIndicator(
+                  key: ValueKey('portfolio-recency-${entry.name}'),
+                  recency: entry.recency,
+                  now: now,
+                ),
+              ],
+            ),
+            // A repo with no touches in the tracked window renders no
+            // sparkline at all — a flat row of zero-height bars would read
+            // as "measured and idle" rather than "no data" (task 4 AC).
+            if (activity.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Sparkline(
+                key: ValueKey('portfolio-sparkline-${entry.name}'),
+                values: activity,
+              ),
+            ],
+          ],
         ),
       ),
     );
   }
+}
+
+/// The recency slot beside the `LaneBar`: an [AgeChip] for a
+/// [RepoRecencyKnown] repo, or an honest "not started" treatment for
+/// [RepoRecencyNeverWorked] — never a fabricated age, and never an em dash
+/// standing in for one (task 4 AC; preserves task 1/2's never-worked vs.
+/// stale distinction to the pixel).
+class _RecencyIndicator extends StatelessWidget {
+  const _RecencyIndicator({
+    super.key,
+    required this.recency,
+    required this.now,
+  });
+
+  final RepoRecency recency;
+  final DateTime now;
+
+  @override
+  Widget build(BuildContext context) {
+    final recency = this.recency;
+    if (recency is RepoRecencyKnown) {
+      return AgeChip.since(recency.lastTouched, now: now);
+    }
+
+    final tone = context.statusTones.neutral;
+    return Container(
+      key: const ValueKey('portfolio-recency-not-started'),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: tone.background,
+        border: Border.all(color: tone.border, width: 1),
+        borderRadius: BorderRadius.circular(AppTokens.radiusMd),
+      ),
+      child: Text(
+        'not started',
+        style: AppTypography.textTheme.labelSmall?.copyWith(
+          color: tone.foreground,
+        ),
+      ),
+    );
+  }
+}
+
+/// The default window for [_recentActivityValues]: the last 7 days
+/// (specimen `from-inventory-to-instrument.html` §05's seven-bar
+/// `Sparkline`, "activity over the last seven days").
+const int _kActivityWindowDays = 7;
+
+/// Derives [entry]'s `Sparkline` series from the real, already-served
+/// `lastTouched` timestamps on its blocks — never a fabricated or
+/// synthetic count. Buckets every block's `lastTouched` into the day it
+/// fell on within the trailing [_kActivityWindowDays]-day window (oldest
+/// first, so the series reads left-to-right as a trajectory), and returns
+/// the empty list — not a flat row of zeroes — when nothing in [repo] was
+/// touched inside that window, so [_RepoRow] can render no `Sparkline` at
+/// all for a repo with no recent activity (task 4 AC).
+///
+/// Pure: takes [now] explicitly and never reads the wall clock, matching
+/// task 2's determinism contract for this screen.
+List<double> _recentActivityValues(RepoBoardDto repo, DateTime now) {
+  final counts = List<double>.filled(_kActivityWindowDays, 0);
+  final today = DateTime(now.year, now.month, now.day);
+  final allBlocks = [
+    ...repo.lanes.now,
+    ...repo.lanes.next,
+    ...repo.lanes.blocked,
+    ...repo.lanes.deferred,
+    ...repo.lanes.finished,
+  ];
+
+  var hasActivity = false;
+  for (final block in allBlocks) {
+    final touched = block.lastTouched;
+    if (touched == null) continue;
+    final touchedDay = DateTime(touched.year, touched.month, touched.day);
+    final daysAgo = today.difference(touchedDay).inDays;
+    if (daysAgo < 0 || daysAgo >= _kActivityWindowDays) continue;
+    counts[_kActivityWindowDays - 1 - daysAgo] += 1;
+    hasActivity = true;
+  }
+
+  return hasActivity ? counts : const [];
 }
