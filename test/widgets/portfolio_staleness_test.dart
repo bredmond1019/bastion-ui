@@ -132,6 +132,14 @@ void main() {
       await tester.pump();
       await tester.pump();
 
+      // never-worked-repo lands in the quiet tier, which collapses to a
+      // summary row by default (task 5) — expand it to reach the row's
+      // recency slot.
+      await tester.tap(
+        find.byKey(const ValueKey('portfolio-quiet-summary-tap')),
+      );
+      await tester.pumpAndSettle();
+
       final recencySlot = find.byKey(
         const ValueKey('portfolio-recency-never-worked-repo'),
       );

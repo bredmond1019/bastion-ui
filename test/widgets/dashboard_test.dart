@@ -123,7 +123,20 @@ void main() {
 
       expect(find.text('alpha'), findsOneWidget);
       expect(find.text('beta'), findsOneWidget);
+      // The quiet tier collapses to a summary row by default (task 5) —
+      // with a single quiet repo the summary text is just its name, so
+      // `gamma` is still findable without expanding.
       expect(find.text('gamma'), findsOneWidget);
+
+      // gamma's row is collapsed, so only alpha's and beta's LaneBar/
+      // StatusPill render until the quiet tier is expanded.
+      expect(find.byType(LaneBar), findsNWidgets(2));
+      expect(find.byType(StatusPill), findsNWidgets(2));
+
+      await tester.tap(
+        find.byKey(const ValueKey('portfolio-quiet-summary-tap')),
+      );
+      await tester.pumpAndSettle();
 
       // One LaneBar trailing detail per row.
       expect(find.byType(LaneBar), findsNWidgets(3));
@@ -167,6 +180,14 @@ void main() {
       await tester.pump();
 
       expect(find.text('RUNNING'), findsOneWidget);
+
+      // gamma's ON TRACK pill is inside the quiet tier's row, which is
+      // collapsed to a summary row by default (task 5) — expand it first.
+      await tester.tap(
+        find.byKey(const ValueKey('portfolio-quiet-summary-tap')),
+      );
+      await tester.pumpAndSettle();
+
       expect(find.text('ON TRACK'), findsOneWidget);
     });
 

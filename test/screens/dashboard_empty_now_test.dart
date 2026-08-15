@@ -65,6 +65,14 @@ void main() {
         await tester.pump();
         await tester.pump();
 
+        // alpha has zero blocks -> quiet tier, which collapses to a
+        // summary row by default (task 5) -> expand it to reach its meta
+        // line.
+        await tester.tap(
+          find.byKey(const ValueKey('portfolio-quiet-summary-tap')),
+        );
+        await tester.pumpAndSettle();
+
         // The regression this ticket exists to prevent: the literal
         // sentinel text must never appear anywhere on screen.
         expect(find.text('[]'), findsNothing);

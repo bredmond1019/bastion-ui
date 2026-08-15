@@ -183,7 +183,7 @@ class _DashboardBody extends ConsumerWidget {
             now: now,
           ),
           _TierSection(label: 'Active', entries: ranking.active, now: now),
-          _TierSection(label: 'Quiet', entries: ranking.quiet, now: now),
+          _QuietTierSection(entries: ranking.quiet, now: now),
         ],
       ),
     );
@@ -256,6 +256,161 @@ class _TierSection extends StatelessWidget {
   }
 }
 
+/// The quiet tier's section: an [Eyebrow] heading identical to
+/// [_TierSection]'s, but with its rows collapsed by default into a single
+/// tappable summary row (task 5) rather than always rendering every quiet
+/// repo. Quiet repos are, by definition, the ones with nothing in flight
+/// and nothing blocked — the tier the operator least needs a full list of
+/// on every load — so this is the one tier whose rows are opt-in.
+///
+/// State (`_expanded`) lives on this widget, not a provider — the spec's
+/// task 5 note is explicit that this needs no new provider, and the
+/// expand/collapse choice does not need to survive a screen rebuild or a
+/// navigation round trip.
+class _QuietTierSection extends StatefulWidget {
+  const _QuietTierSection({required this.entries, required this.now});
+
+  final List<PortfolioRepoEntry> entries;
+  final DateTime now;
+
+  @override
+  State<_QuietTierSection> createState() => _QuietTierSectionState();
+}
+
+class _QuietTierSectionState extends State<_QuietTierSection> {
+  bool _expanded = false;
+
+  void _toggle() => setState(() => _expanded = !_expanded);
+
+  @override
+  Widget build(BuildContext context) {
+    final entries = widget.entries;
+    if (entries.isEmpty) return const SizedBox.shrink();
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Eyebrow(label: 'Quiet · ${entries.length}'),
+          const SizedBox(height: 10),
+          if (_expanded) ...[
+            for (final entry in entries) ...[
+              _RepoRow(
+                key: ValueKey('portfolio-row-${entry.name}'),
+                entry: entry,
+                now: widget.now,
+              ),
+              const SizedBox(height: 8),
+            ],
+            _QuietCollapseRow(onTap: _toggle),
+          ] else
+            _QuietSummaryRow(
+              key: const ValueKey('portfolio-quiet-toggle'),
+              entries: entries,
+              onTap: _toggle,
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+/// The quiet tier's collapsed state: one row naming the first three quiet
+/// repos ('bella · price-scout · mev-docs') plus a `+N` count for the
+/// rest, per specimen §05. Tapping (anywhere on the row) expands the tier.
+class _QuietSummaryRow extends StatelessWidget {
+  const _QuietSummaryRow({super.key, required this.entries, this.onTap});
+
+  final List<PortfolioRepoEntry> entries;
+  final VoidCallback? onTap;
+
+  /// The first three quiet repo names joined by ` · `, plus a `+N` suffix
+  /// naming how many more are collapsed underneath — never a bare count
+  /// with no names, and never all names once there are more than three
+  /// (the row must stay one line on a phone width).
+  static const int _namedCount = 3;
+
+  String get _summaryText {
+    final named = entries.take(_namedCount).map((e) => e.name).join(' · ');
+    final remaining = entries.length - _namedCount;
+    return remaining > 0 ? '$named  +$remaining' : named;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      key: const ValueKey('portfolio-quiet-summary-tap'),
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(AppTokens.radiusLg),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 11),
+        decoration: BoxDecoration(
+          color: AppTokens.surface,
+          border: Border.all(color: AppTokens.line, width: 1),
+          borderRadius: BorderRadius.circular(AppTokens.radiusLg),
+        ),
+        child: Row(
+          children: [
+            Expanded(
+              child: Text(
+                _summaryText,
+                key: const ValueKey('portfolio-quiet-summary-text'),
+                overflow: TextOverflow.ellipsis,
+                style: AppTypography.textTheme.bodySmall?.copyWith(
+                  color: AppTokens.inkSoft,
+                  height: 1.45,
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Icon(
+              Icons.expand_more,
+              key: const ValueKey('portfolio-quiet-expand-icon'),
+              size: 18,
+              color: AppTokens.inkFaint,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// The quiet tier's expanded-state footer: a plain tap target that
+/// collapses the tier again, so the operator never has to scroll back up
+/// to the [Eyebrow] to put the tier away.
+class _QuietCollapseRow extends StatelessWidget {
+  const _QuietCollapseRow({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      key: const ValueKey('portfolio-quiet-collapse'),
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(AppTokens.radiusLg),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              'Collapse',
+              style: AppTypography.textTheme.bodySmall?.copyWith(
+                color: AppTokens.inkFaint,
+              ),
+            ),
+            const SizedBox(width: 6),
+            Icon(Icons.expand_less, size: 18, color: AppTokens.inkFaint),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 /// One repo row: a [SeverityRow] (severity stripe + `StatusPill` + meta
 /// line) with a [LaneBar] trailing detail, per specimen §05's `cardline`.
 class _RepoRow extends StatelessWidget {
@@ -285,6 +440,19 @@ class _RepoRow extends StatelessWidget {
 
   /// The trailing `StatusPill`'s tone + label, one per tier per specimen
   /// §05 ("2 GATES" / "STALE 9d" / "RUNNING" / "ON TRACK").
+  ///
+  /// **D4 constraint 3 (task 5).** The web-ported tone table names
+  /// `StatusPillTone.onTrack` -> `tones.active` (the loud, `accent2`
+  /// tone) and `StatusPillTone.inProgress` -> `tones.neutral` (the muted
+  /// tone) — see `status_pill.dart`'s `statusToneFor`. Before this task,
+  /// the *active* tier ("RUNNING") was assigned `inProgress` (muted) while
+  /// the *quiet* tier ("ON TRACK") was assigned `onTrack` (loud): the calm
+  /// state read louder than the running one, inverting principle 2. This
+  /// repo owns the repo->pill mapping (not `statusToneFor` itself, which
+  /// other screens' own mappings rely on), so the fix is here: swap which
+  /// of the four fixed tones each tier's pill uses, re-mapping within the
+  /// existing four rather than adding a fifth (`StatusPillTone` is an
+  /// exhaustive four-case enum by design, `status_pill.dart:37-44`).
   (StatusPillTone, String) get _pill {
     switch (entry.tier) {
       case PortfolioTier.needsAttention:
@@ -295,9 +463,11 @@ class _RepoRow extends StatelessWidget {
         }
         return (StatusPillTone.needsYou, 'STALE');
       case PortfolioTier.active:
-        return (StatusPillTone.inProgress, 'RUNNING');
+        // Loud: an active repo must read louder than an idle one.
+        return (StatusPillTone.onTrack, 'RUNNING');
       case PortfolioTier.quiet:
-        return (StatusPillTone.onTrack, 'ON TRACK');
+        // Muted: the calm state no longer outshines the running one.
+        return (StatusPillTone.inProgress, 'ON TRACK');
     }
   }
 
