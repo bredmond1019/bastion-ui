@@ -52,8 +52,10 @@ lib/
 │   ├── commands_provider.dart   — persisted user-editable command-palette list (CommandsNotifier/commandsProvider)
 │   ├── briefing_model.dart      — pure view-model layer: BriefingViewModel, BriefingSectionState<T>,
 │   │                                null-safe descending ranking (gates/blocked/needs-input)
-│   └── briefing_provider.dart   — briefingViewModelProvider composing board+attention+sessions
-│                                    into three independently-fetching sections; refreshFailedBriefingSections
+│   ├── briefing_provider.dart   — briefingViewModelProvider composing board+attention+sessions
+│   │                                into three independently-fetching sections; refreshFailedBriefingSections
+│   └── portfolio_ranking.dart   — pure, Flutter-free rankPortfolio(): tiers repos into
+│                                    needsAttention/active/quiet from per-repo lane data
 ├── screens/                 ← full-page widgets
 │   ├── briefing_screen.dart
 │   ├── settings_screen.dart
@@ -164,7 +166,10 @@ re-seed can never clobber newer WS-delivered state.
   serve-api.md v0.30 §13, §15, §16 (block BU.11.A). Every optional wire field decodes
   to a nullable Dart field with a safe default; `BoardBlockDto`'s three graph-gated
   fields (`dependentCount`, `ready`, `unmetCount`) are `null` (never a fabricated
-  zero) unless the request passed `?graph=true`.
+  zero) unless the request passed `?graph=true`. `BoardBlockDto.lastTouched` is a
+  nullable `DateTime` parsed (`DateTime.tryParse`) from the wire's ISO string; `null`
+  unconditionally means "never worked" (never "worked long ago"), and a malformed wire
+  string degrades to `null` rather than throwing.
 - `PaletteCommand` (`state/commands_provider.dart`) — local `{label, command}` value
   object for the user-editable palette; not part of the serve-api contract.
 - `BriefingViewModel` / `BriefingSectionState<T>` (`state/briefing_model.dart`) — pure,
@@ -182,12 +187,29 @@ exact serve-api contract revision the model layer above was written against.
 absent — the pin is the app's only machine-checked contract-version marker; every
 prior version reference here was prose that nothing checked.
 
-## Dashboard + repo-detail flow (BU.2.A)
+## Dashboard + repo-detail flow (BU.2.A, 13.D)
 
-- `DashboardScreen` watches `reposProvider` for the repo list (sorted by name) and, per
-  row, `repoWorkflowsProvider(repo.name)` to derive a `RepoBadgeState` — in-flight
-  workflow (`status == 'running'`) outranks a pending handoff, which outranks idle.
-  Pull-to-refresh calls `RepoListNotifier.refresh()`.
+- `DashboardScreen` (`ConsumerStatefulWidget`) watches `briefingBoardProvider`
+  (`?graph=true`, root-scope — reused from the Briefing tab rather than a second
+  board fetch) and feeds it through `rankPortfolio()` (`state/portfolio_ranking.dart`),
+  which tiers repos into **Needs attention** / **Active** / **Quiet** and derives each
+  repo's `RepoRecency` (`Known(DateTime)` vs `NeverWorked`) from the newest
+  `lastTouched` across all five lanes. `now` is captured once in `initState` (never in
+  `build`) and threaded down, so nothing in the row rereads the wall clock.
+- Each tier renders its repos as `SeverityRow`s with a `LaneBar` (done/now/blocked/next
+  counts) plus an `AgeChip` (or an honest "not started" chip for `NeverWorked` repos)
+  and, when the repo had activity in the trailing 7 days, a `Sparkline` bucketed from
+  each block's real `lastTouched` timestamp (a repo with no activity in that window
+  renders no sparkline at all, never a fabricated flat zero row). The Quiet tier
+  collapses by default to a single tap-to-expand summary row (first 3 names + "+N
+  more"); tapping `portfolio-quiet-summary-tap` expands it.
+  Pull-to-refresh calls the board provider's refresh.
+- `StatusPill` tone mapping (per D4 constraint 3): an active/RUNNING repo reads louder
+  (`StatusPillTone.active`, `tones.active`) than an idle/on-track one
+  (`StatusPillTone.neutral`, `tones.neutral`) — fixed within `dashboard_screen.dart`'s
+  per-tier `_pill` mapping rather than `status_pill.dart`'s global `statusToneFor`,
+  since other screens rely on that function's existing tone semantics for unrelated
+  states.
 - `RepoDetailScreen` watches the same `repoWorkflowsProvider(repoName)` family for the
   parsed `RepoStatusDto` (rendered as a label/value table via `_StatusTable`) and the
   `WorkflowStateDto` list (one `WorkflowProgress` row each). When
