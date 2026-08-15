@@ -26,6 +26,8 @@ import 'package:bastion_ui/state/sessions_provider.dart'
 import 'package:bastion_ui/widgets/brand/brand.dart';
 import 'package:bastion_ui/widgets/command_invoke_sheet.dart';
 
+import '../support/fake_http_transport.dart';
+
 // ---------------------------------------------------------------------------
 // Fakes
 // ---------------------------------------------------------------------------
@@ -63,51 +65,6 @@ class _FakeSecureStorage extends Fake implements FlutterSecureStorage {
     WindowsOptions? wOptions,
   }) async {
     return _store[key];
-  }
-}
-
-typedef RecordedCall = ({String method, String url, String? body});
-
-final class FakeHttpTransport implements HttpTransport {
-  final List<RecordedCall> calls = [];
-  final List<({int statusCode, String body})> _responses = [];
-
-  void setResponse({required int statusCode, required Object body}) {
-    final encoded = body is String ? body : jsonEncode(body);
-    _responses.add((statusCode: statusCode, body: encoded));
-  }
-
-  ({int statusCode, String body}) _consume() {
-    if (_responses.isEmpty) return (statusCode: 204, body: '');
-    return _responses.removeAt(0);
-  }
-
-  @override
-  Future<({int statusCode, String body})> get(
-    String url, {
-    Map<String, String> headers = const {},
-  }) async {
-    calls.add((method: 'GET', url: url, body: null));
-    return _consume();
-  }
-
-  @override
-  Future<({int statusCode, String body})> post(
-    String url, {
-    Map<String, String> headers = const {},
-    String? body,
-  }) async {
-    calls.add((method: 'POST', url: url, body: body));
-    return _consume();
-  }
-
-  @override
-  Future<({int statusCode, String body})> delete(
-    String url, {
-    Map<String, String> headers = const {},
-  }) async {
-    calls.add((method: 'DELETE', url: url, body: null));
-    return _consume();
   }
 }
 
@@ -325,7 +282,12 @@ void main() {
       (tester) async {
         const sessions = [SessionDto(name: 'alpha', state: 'running')];
         final httpTransport = FakeHttpTransport();
-        httpTransport.setResponse(statusCode: 200, body: {'session': 'alpha'});
+        httpTransport.on(
+          'POST',
+          '/api/actions/command',
+          status: 200,
+          body: {'session': 'alpha'},
+        );
 
         await tester.pumpWidget(
           _buildScreen(httpTransport: httpTransport, sessions: sessions),
@@ -366,8 +328,10 @@ void main() {
     ) async {
       const sessions = [SessionDto(name: 'alpha', state: 'running')];
       final httpTransport = FakeHttpTransport();
-      httpTransport.setResponse(
-        statusCode: 404,
+      httpTransport.on(
+        'POST',
+        '/api/actions/command',
+        status: 404,
         body: {'code': 'C002', 'error': 'unknown session'},
       );
 
