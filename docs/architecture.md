@@ -6,7 +6,7 @@ doc_id: architecture
 layer: [surface]
 project: bastion-ui
 status: active
-keywords: [flutter, riverpod, websocket, rest, dto, providers]
+keywords: [flutter, riverpod, websocket, rest, dto, providers, briefing]
 related: [api-reference, pages]
 ---
 
@@ -49,8 +49,13 @@ lib/
 │   ├── events_provider.dart     — needs_input event stream + flag set
 │   ├── repos_provider.dart      — workspace-registry repo list
 │   ├── workflows_provider.dart  — per-repo status/workflows + workflow_done event stream
-│   └── commands_provider.dart   — persisted user-editable command-palette list (CommandsNotifier/commandsProvider)
+│   ├── commands_provider.dart   — persisted user-editable command-palette list (CommandsNotifier/commandsProvider)
+│   ├── briefing_model.dart      — pure view-model layer: BriefingViewModel, BriefingSectionState<T>,
+│   │                                null-safe descending ranking (gates/blocked/needs-input)
+│   └── briefing_provider.dart   — briefingViewModelProvider composing board+attention+sessions
+│                                    into three independently-fetching sections; refreshFailedBriefingSections
 ├── screens/                 ← full-page widgets
+│   ├── briefing_screen.dart
 │   ├── settings_screen.dart
 │   ├── sessions_list_screen.dart
 │   ├── session_detail_screen.dart
@@ -90,7 +95,7 @@ lib/
    and reconnects automatically.
 
 Once both providers are non-null, `HomeShell` renders `_ConnectedBody`, a bottom
-`NavigationBar` with three tabs (`SessionsListScreen`, `DashboardScreen`,
+`NavigationBar` with four tabs (`BriefingScreen`, `SessionsListScreen`, `DashboardScreen`,
 `QuickActionsScreen`) inside an `IndexedStack` (all screens stay mounted so provider
 state survives tab switches).
 `_ConnectedBody` also activates `notificationWiringProvider` and
@@ -162,6 +167,13 @@ re-seed can never clobber newer WS-delivered state.
   zero) unless the request passed `?graph=true`.
 - `PaletteCommand` (`state/commands_provider.dart`) — local `{label, command}` value
   object for the user-editable palette; not part of the serve-api contract.
+- `BriefingViewModel` / `BriefingSectionState<T>` (`state/briefing_model.dart`) — pure,
+  provider-free view-model for the Briefing tab. Three independently-stated sections (board,
+  attention, sessions); ranking helpers (`rankedGates`, `rankedBlocked`, `rankedNeedsInput`)
+  sort descending on `dependent_count`/`age_days`/idle time with nulls sorted last (never
+  coerced to 0), ties broken on a stable id/slug/name key. `BriefingViewModel.needsInputIdle`
+  is a `Map<String, Duration>` populated externally (by `briefing_provider.dart`) from
+  `needs_input` event arrival time, since `SessionDto` carries no timestamp itself.
 
 **Version pin.** `lib/services/serve_api_version.dart` exports `kServeApiPin`, the
 exact serve-api contract revision the model layer above was written against.
@@ -238,6 +250,30 @@ prior version reference here was prose that nothing checked.
   phone widths, tapping a `SessionCard` still pushes `/sessions/<name>` unchanged.
   `SessionDetailScreen`'s `embedded` flag suppresses the implied AppBar back button
   when rendered inline (there is no route to pop back from).
+
+## Briefing flow (13.B)
+
+- `BriefingScreen` (tab 0, `screens/briefing_screen.dart`) watches
+  `briefingViewModelProvider` (`state/briefing_provider.dart`), which composes three
+  independently-fetching `BriefingSectionNotifier<T>` sections — `GET /api/board`
+  (`?graph=true`, paid on every load), `GET /api/attention`, and the existing
+  `sessionsProvider` (wrapped as always-Loaded, since that provider never itself
+  surfaces a REST-seed error) — into a single `BriefingViewModel`.
+- Header stats (`BriefingHeader`) and the three lanes (gates, blocked, live runs) each
+  read from `state/briefing_model.dart`'s pure ranking functions
+  (`rankedGates`/`rankedBlocked`/`rankedNeedsInput`), so the same null-safe,
+  descending-with-nulls-last logic backs both the counts and the lane contents.
+- A section error degrades only the stats/lanes that depend on it (an em dash in the
+  header, an inline per-lane error with retry) — the other sections keep rendering.
+  `refreshFailedBriefingSections(ProviderContainer)` re-fetches only the errored
+  sections; it takes a `ProviderContainer` rather than a `Ref`/`WidgetRef` so the same
+  function is callable from tests and from screen code via
+  `ProviderScope.containerOf(context, listen: false)`.
+- Operator gates are `BoardBlockDto` blocked-lane entries whose `blockedBy` contains an
+  operator/approval dependency; blocked blocks are sourced from
+  `AttentionCarryoverDto.staleCarryover` filtered to `lane == 'blocking'` (`BoardBlockDto`
+  has no `age_days` field on the wire). `GateCard.onAct` reuses the existing
+  `repoDetailRouteName(gate.repo)` route rather than a new write path.
 
 ## Known contract gap
 
