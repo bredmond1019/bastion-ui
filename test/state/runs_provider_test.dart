@@ -103,7 +103,7 @@ Map<String, dynamic> runTransitionFrame({
     'run_id': runId,
     'status': status,
     'terminal': terminal,
-    if (specSlug != null) 'spec_slug': specSlug,
+    'spec_slug': ?specSlug,
   },
 };
 
