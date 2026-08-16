@@ -6,7 +6,7 @@ doc_id: testing
 layer: [surface]
 project: bastion-ui
 status: active
-keywords: [testing, integration-tests, e2e, patrol, fake-http-transport, coverage-guard]
+keywords: [testing, integration-tests, e2e, patrol, fake-http-transport, coverage-guard, dev-environment, emulator]
 related: [architecture, api-reference]
 ---
 
@@ -90,3 +90,37 @@ in another process (a running server) — no check in this repo can observe it. 
 question is the non-gating `e2e-serve-contract` check's job, not the integration tier's. The
 integration tier proves the client *encodes requests and decodes responses the way the
 fixtures say it should*; it cannot prove the fixtures are still correct.
+
+## Manual dev environment — device + a real `bastion serve`
+
+Tier 3 (and any other by-hand check against a live server, e.g. verifying a fix, running
+Patrol manually, or just clicking around against real data) needs an attached Android
+device/emulator plus a reachable `bastion serve`. `scripts/start_dev_env.sh` sets both up in
+one call and bails with a specific diagnosis rather than a generic failure:
+
+```bash
+scripts/start_dev_env.sh            # boot emulator + server, then `flutter run` against it
+scripts/start_dev_env.sh --no-run   # same, but stop after printing connection info
+```
+
+What it does, in order:
+
+1. Sets `ANDROID_HOME`/`JAVA_HOME`/`PATH` (same defaults as `run_patrol_smoke.sh`).
+2. Reuses an already-attached device (`adb devices`), or boots the `Pixel_9` AVD (override
+   with `--avd <name>`) and waits for it to finish booting.
+3. Locates a `bastion` binary — `../bastion/target/release/`, then `.../debug/`, then
+   `$PATH` (override with `BASTION_BIN=/path/to/bastion`).
+4. Reuses an already-answering `bastion serve` on `:4317` (override with `--port`), or starts
+   one — sourcing `../bastion/.env` first so `DATABASE_URL`/`BASTION_ENGINE_API_KEY` are
+   picked up and the engine routes mount (see `D6` in `planning/decisions/`). Reports whether
+   the engine actually mounted, since `BU.12.x` calls 404 silently otherwise.
+5. On success, either execs `flutter run -d <device>`, or (with `--no-run`) prints the
+   host:port + token to plug into Settings.
+
+**Failure modes it distinguishes** (each bails with the specific cause + where to look, never
+just "something went wrong"): missing Android SDK, no AVD by that name, emulator boot
+timeout, no `bastion` binary found, the target port already held by something that isn't
+`bastion serve` (names the PID/process, doesn't just fail to bind), and `bastion serve`
+exiting immediately or never answering `/health` (both dump the server's own log tail). It
+only tears down what it started, and only on a failure path — a clean run leaves the
+emulator and server up so repeated `flutter run`s don't pay the boot cost again.

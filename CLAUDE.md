@@ -62,6 +62,10 @@ flutter build apk                                  # build an Android APK
 > The SDLC pipeline reads its gating suite from `planning/harness.json` (format → analyze →
 > test). The live end-to-end run against a real `bastion serve` over Tailscale is a **manual**
 > verification step, not an automated gate (no devserver/route UI-test stage for a mobile app).
+> To do that verification: `scripts/start_dev_env.sh` boots an emulator + a local `bastion
+> serve` (reusing either if already up) and launches `flutter run` against it, bailing with a
+> specific diagnosis on failure rather than a generic error. See `docs/testing.md` ("Manual
+> dev environment" section) for what it checks and its failure modes.
 
 ## Directory map
 
