@@ -9,6 +9,35 @@ timestamp: "2026-08-16T02:15:00Z"
 
 *Append-only working log. One dated entry per session. Newest entries at the top.*
 
+## [run: 2026-08-16]
+
+Closed `BU.ticket.e2e-fixed-timeouts` via `/sdlc-flow` (tasks 1–3, all passed, PASS review). The e2e
+suite's two shared default timeouts — `collectEvents`/`collectFrames`/`awaitStatus`'s 30s collector
+default and `startServer`-family's 15s server-ready default — were each duplicated as bare literals
+(three copies of the former, two of the latter) with no name a reader could grep for and no
+explanation of why those values were chosen over any other. Task 1 named the 30s default
+`kDefaultCollectorTimeout` in `test/e2e/e2e_support.dart`; task 2 named the 15s default
+`kDefaultServeReadyTimeout` in `test/e2e/bastion_serve_harness.dart`; both constants carry a doc
+comment stating the slow-but-correct-vs-hung tradeoff they deliberately don't try to solve, per the
+spec's acceptance criteria. No numeric value changed and no call site's behavior changed — task 3
+confirmed `dart format`, `flutter analyze`, and `flutter test --exclude-tags e2e` (804 tests) all
+pass with zero diffs beyond the two renamed-source edits. The only deviation noted: `dart format`'s
+full-repo invocation flags `patrol_test/test_bundle.dart`, a `.gitignore`'d generated file outside
+this ticket's scope — scoping the check to `lib`+`test` (the tracked source) confirmed the real gate
+is unaffected. Next: `BU.ticket.e2e-failure-paths` (e2e covers only happy paths) or resume the
+Phase 10/11/12 roadmap via `/begin-orchestration`.
+
+```
+bb94c4d feat: implement ticket-e2e-fixed-timeouts-task2
+c533032 feat: implement ticket-e2e-fixed-timeouts-task1
+115a1f8 docs: log the live-run verification + phone-triggered spawn session
+b0bb3fe BU.ticket.finish-fake-transport-migration — finish the FakeHttpTransport migration (#9)
+baacc62 test: add Patrol-driven trigger for /sdlc-flow via the phone's spawn action
+4353f7c style: use null-aware map-entry syntax in runTransitionFrame test helper
+3e9593d chore: re-pin kServeApiPin to upstream v0.32 (BA.19.A, additive)
+5793399 fix(runs): self-heal missed run_transition pushes with a periodic REST re-seed
+```
+
 ---
 
 ## [2026-08-16]
