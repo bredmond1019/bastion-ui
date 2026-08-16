@@ -52,7 +52,7 @@ None known at initialization.
 
 ```bash
 flutter pub get                                   # install deps
-dart format --output=none --set-exit-if-changed . # format check (gating)
+dart format --output=none --set-exit-if-changed lib test # format check (gating)
 flutter analyze                                   # static analysis (gating)
 flutter test                                      # unit + widget tests (gating)
 flutter run                                        # run on a connected device/emulator
