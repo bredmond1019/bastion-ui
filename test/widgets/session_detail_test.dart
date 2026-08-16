@@ -21,6 +21,8 @@ import 'package:bastion_ui/theme/app_theme.dart';
 import 'package:bastion_ui/theme/tokens.dart';
 import 'package:bastion_ui/widgets/brand/brand.dart';
 
+import '../support/fake_http_transport.dart';
+
 // ---------------------------------------------------------------------------
 // Fakes (mirrors pane_provider_test.dart / api_test.dart fixtures)
 // ---------------------------------------------------------------------------
@@ -48,57 +50,6 @@ class FakeWsTransport implements WsTransport {
   @override
   Future<void> close() async {
     if (!_controller.isClosed) await _controller.close();
-  }
-}
-
-typedef RecordedCall = ({String method, String url, String? body});
-
-/// [HttpTransport] fake that records every call and consumes queued
-/// responses FIFO regardless of method.
-final class FakeHttpTransport implements HttpTransport {
-  final List<RecordedCall> calls = [];
-  final List<({int statusCode, String body})> _responses = [];
-
-  void setResponse({required int statusCode, required Object body}) {
-    final encoded = body is String ? body : jsonEncode(body);
-    _responses.add((statusCode: statusCode, body: encoded));
-  }
-
-  ({int statusCode, String body}) _consume() {
-    if (_responses.isEmpty) {
-      // Default success for POST/DELETE calls not explicitly stubbed (e.g.
-      // approve-button taps) — a 204 with an empty body.
-      return (statusCode: 204, body: '');
-    }
-    return _responses.removeAt(0);
-  }
-
-  @override
-  Future<({int statusCode, String body})> get(
-    String url, {
-    Map<String, String> headers = const {},
-  }) async {
-    calls.add((method: 'GET', url: url, body: null));
-    return _consume();
-  }
-
-  @override
-  Future<({int statusCode, String body})> post(
-    String url, {
-    Map<String, String> headers = const {},
-    String? body,
-  }) async {
-    calls.add((method: 'POST', url: url, body: body));
-    return _consume();
-  }
-
-  @override
-  Future<({int statusCode, String body})> delete(
-    String url, {
-    Map<String, String> headers = const {},
-  }) async {
-    calls.add((method: 'DELETE', url: url, body: null));
-    return _consume();
   }
 }
 
@@ -194,8 +145,10 @@ void main() {
     testWidgets('renders the pane buffer seeded via REST getPane()', (
       tester,
     ) async {
-      httpTransport.setResponse(
-        statusCode: 200,
+      httpTransport.on(
+        'GET',
+        '/api/sessions/alpha/pane',
+        status: 200,
         body: {
           'session_name': 'alpha',
           'lines': [r'$ ls', 'foo.txt'],
@@ -211,8 +164,10 @@ void main() {
     testWidgets('auto-scrolls to the bottom when a new pane frame arrives', (
       tester,
     ) async {
-      httpTransport.setResponse(
-        statusCode: 200,
+      httpTransport.on(
+        'GET',
+        '/api/sessions/alpha/pane',
+        status: 200,
         body: {'session_name': 'alpha', 'lines': <String>[]},
       );
 
@@ -248,9 +203,27 @@ void main() {
       testWidgets(
         'tapping the "${entry.key}" approve button sends the right key',
         (tester) async {
-          httpTransport.setResponse(
-            statusCode: 200,
+          httpTransport.on(
+            'GET',
+            '/api/sessions/alpha/pane',
+            status: 200,
             body: {'session_name': 'alpha', 'lines': <String>[]},
+          );
+          // Explicit 204 for the approve-button POST — the shared fixture
+          // has no implicit unregistered-route default (unlike the local
+          // fake this replaces, which fell back to 204 for any queue-empty
+          // call).
+          httpTransport.on(
+            'POST',
+            '/api/sessions/alpha/send',
+            status: 204,
+            body: '',
+          );
+          httpTransport.on(
+            'POST',
+            '/api/sessions/alpha/key',
+            status: 204,
+            body: '',
           );
 
           await pumpScreen(tester, sessionName: 'alpha');
@@ -276,9 +249,17 @@ void main() {
     testWidgets('the send bar sends typed keys and clears the field', (
       tester,
     ) async {
-      httpTransport.setResponse(
-        statusCode: 200,
+      httpTransport.on(
+        'GET',
+        '/api/sessions/alpha/pane',
+        status: 200,
         body: {'session_name': 'alpha', 'lines': <String>[]},
+      );
+      httpTransport.on(
+        'POST',
+        '/api/sessions/alpha/send',
+        status: 204,
+        body: '',
       );
 
       await pumpScreen(tester, sessionName: 'alpha');
@@ -304,8 +285,10 @@ void main() {
 
     testWidgets('renders brand primitives: an Eyebrow per section and the pane '
         'wrapped in a PanelCard', (tester) async {
-      httpTransport.setResponse(
-        statusCode: 200,
+      httpTransport.on(
+        'GET',
+        '/api/sessions/alpha/pane',
+        status: 200,
         body: {'session_name': 'alpha', 'lines': <String>[]},
       );
 
@@ -321,8 +304,10 @@ void main() {
       'the deny ("Esc") button is destructive-toned and the affirmative '
       'buttons are primary-toned, both from AppTokens',
       (tester) async {
-        httpTransport.setResponse(
-          statusCode: 200,
+        httpTransport.on(
+          'GET',
+          '/api/sessions/alpha/pane',
+          status: 200,
           body: {'session_name': 'alpha', 'lines': <String>[]},
         );
 

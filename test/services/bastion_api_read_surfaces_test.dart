@@ -3,73 +3,17 @@
 // Tests for the four v0.30 read surfaces added to [BastionApi]:
 // getBoard, getAttention, getDocsTree, getDocsFile (serve-api.md §13/§15/§16).
 //
-// Reuses the FakeHttpTransport pattern from test/services/api_test.dart —
-// see that file for the canonical shape; this file keeps its own private
-// copy to stay self-contained and independently runnable.
-
-import 'dart:convert';
+// Uses the shared, routing-aware FakeHttpTransport from
+// test/support/fake_http_transport.dart (BU.ticket.finish-fake-transport-migration
+// task 1) — responses are registered per (method, path) instead of a flat FIFO
+// queue, so a misrouted call fails loudly instead of silently consuming
+// whatever response is next.
 
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:bastion_ui/services/bastion_api.dart';
 
-// ---------------------------------------------------------------------------
-// Fake transport (no real network)
-// ---------------------------------------------------------------------------
-
-typedef RecordedCall = ({
-  String method,
-  String url,
-  Map<String, String> headers,
-  String? body,
-});
-
-final class FakeHttpTransport implements HttpTransport {
-  final List<RecordedCall> calls = [];
-  final List<({int statusCode, String body})> _responses = [];
-
-  void setResponse({required int statusCode, required Object body}) {
-    final encoded = body is String ? body : jsonEncode(body);
-    _responses.add((statusCode: statusCode, body: encoded));
-  }
-
-  ({int statusCode, String body}) _consume(String method, String url) {
-    if (_responses.isEmpty) {
-      throw StateError(
-        'FakeHttpTransport: no response queued for $method $url',
-      );
-    }
-    return _responses.removeAt(0);
-  }
-
-  @override
-  Future<({int statusCode, String body})> get(
-    String url, {
-    Map<String, String> headers = const {},
-  }) async {
-    calls.add((method: 'GET', url: url, headers: headers, body: null));
-    return _consume('GET', url);
-  }
-
-  @override
-  Future<({int statusCode, String body})> post(
-    String url, {
-    Map<String, String> headers = const {},
-    String? body,
-  }) async {
-    calls.add((method: 'POST', url: url, headers: headers, body: body));
-    return _consume('POST', url);
-  }
-
-  @override
-  Future<({int statusCode, String body})> delete(
-    String url, {
-    Map<String, String> headers = const {},
-  }) async {
-    calls.add((method: 'DELETE', url: url, headers: headers, body: null));
-    return _consume('DELETE', url);
-  }
-}
+import '../support/fake_http_transport.dart';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -94,8 +38,10 @@ void main() {
       'hits GET /api/board with no query params when none supplied',
       () async {
         final t = FakeHttpTransport();
-        t.setResponse(
-          statusCode: 200,
+        t.on(
+          'GET',
+          '/api/board',
+          status: 200,
           body: {'lanes': {}, 'repos': [], 'stale': false},
         );
         final api = makeApi(t);
@@ -109,8 +55,10 @@ void main() {
 
     test('emits only the supplied query params, correctly encoded', () async {
       final t = FakeHttpTransport();
-      t.setResponse(
-        statusCode: 200,
+      t.on(
+        'GET',
+        '/api/board',
+        status: 200,
         body: {'lanes': {}, 'repos': [], 'stale': false},
       );
       final api = makeApi(t);
@@ -125,8 +73,10 @@ void main() {
 
     test('graph: false (the default) never emits ?graph=1', () async {
       final t = FakeHttpTransport();
-      t.setResponse(
-        statusCode: 200,
+      t.on(
+        'GET',
+        '/api/board',
+        status: 200,
         body: {'lanes': {}, 'repos': [], 'stale': false},
       );
       final api = makeApi(t);
@@ -138,8 +88,10 @@ void main() {
 
     test('graph: true emits ?graph=true', () async {
       final t = FakeHttpTransport();
-      t.setResponse(
-        statusCode: 200,
+      t.on(
+        'GET',
+        '/api/board',
+        status: 200,
         body: {'lanes': {}, 'repos': [], 'stale': false},
       );
       final api = makeApi(t);
@@ -154,8 +106,10 @@ void main() {
 
     test('decodes a full BoardDto payload', () async {
       final t = FakeHttpTransport();
-      t.setResponse(
-        statusCode: 200,
+      t.on(
+        'GET',
+        '/api/board',
+        status: 200,
         body: {
           'scope': 'hq',
           'lanes': {
@@ -186,7 +140,7 @@ void main() {
 
     test('throws FatalAuthError on 401', () async {
       final t = FakeHttpTransport();
-      t.setResponse(statusCode: 401, body: _unauthorizedBody);
+      t.on('GET', '/api/board', status: 401, body: _unauthorizedBody);
       final api = makeApi(t);
 
       await expectLater(api.getBoard(), throwsA(isA<FatalAuthError>()));
@@ -194,7 +148,7 @@ void main() {
 
     test('throws ApiError on 500', () async {
       final t = FakeHttpTransport();
-      t.setResponse(statusCode: 500, body: 'internal server error');
+      t.on('GET', '/api/board', status: 500, body: 'internal server error');
       final api = makeApi(t);
 
       await expectLater(api.getBoard(), throwsA(isA<ApiError>()));
@@ -204,7 +158,7 @@ void main() {
       'throws ApiError (not a silent empty object) on malformed body',
       () async {
         final t = FakeHttpTransport();
-        t.setResponse(statusCode: 200, body: 'not-json!!');
+        t.on('GET', '/api/board', status: 200, body: 'not-json!!');
         final api = makeApi(t);
 
         await expectLater(api.getBoard(), throwsA(isA<ApiError>()));
@@ -217,8 +171,10 @@ void main() {
       'hits GET /api/attention with no query params when none supplied',
       () async {
         final t = FakeHttpTransport();
-        t.setResponse(
-          statusCode: 200,
+        t.on(
+          'GET',
+          '/api/attention',
+          status: 200,
           body: {
             'as_of': '2026-08-14',
             'lanes': {},
@@ -241,8 +197,10 @@ void main() {
 
     test('emits only the supplied query params, correctly encoded', () async {
       final t = FakeHttpTransport();
-      t.setResponse(
-        statusCode: 200,
+      t.on(
+        'GET',
+        '/api/attention',
+        status: 200,
         body: {
           'as_of': '2026-08-14',
           'lanes': {},
@@ -267,8 +225,10 @@ void main() {
 
     test('decodes a full AttentionDto payload', () async {
       final t = FakeHttpTransport();
-      t.setResponse(
-        statusCode: 200,
+      t.on(
+        'GET',
+        '/api/attention',
+        status: 200,
         body: {
           'scope': 'hq',
           'as_of': '2026-08-14',
@@ -305,7 +265,7 @@ void main() {
 
     test('throws FatalAuthError on 401', () async {
       final t = FakeHttpTransport();
-      t.setResponse(statusCode: 401, body: _unauthorizedBody);
+      t.on('GET', '/api/attention', status: 401, body: _unauthorizedBody);
       final api = makeApi(t);
 
       await expectLater(api.getAttention(), throwsA(isA<FatalAuthError>()));
@@ -313,7 +273,7 @@ void main() {
 
     test('throws ApiError on 500', () async {
       final t = FakeHttpTransport();
-      t.setResponse(statusCode: 500, body: 'internal server error');
+      t.on('GET', '/api/attention', status: 500, body: 'internal server error');
       final api = makeApi(t);
 
       await expectLater(api.getAttention(), throwsA(isA<ApiError>()));
@@ -323,7 +283,7 @@ void main() {
       'throws ApiError (not a silent empty object) on malformed body',
       () async {
         final t = FakeHttpTransport();
-        t.setResponse(statusCode: 200, body: 'not-json!!');
+        t.on('GET', '/api/attention', status: 200, body: 'not-json!!');
         final api = makeApi(t);
 
         await expectLater(api.getAttention(), throwsA(isA<ApiError>()));
@@ -334,8 +294,10 @@ void main() {
   group('BastionApi.getDocsTree', () {
     test('hits GET /api/docs/{repo}/tree with URL-encoded repo', () async {
       final t = FakeHttpTransport();
-      t.setResponse(
-        statusCode: 200,
+      t.on(
+        'GET',
+        '/api/docs/bastion%20ui/tree',
+        status: 200,
         body: {'repo': 'bastion ui', 'root': '', 'entries': []},
       );
       final api = makeApi(t);
@@ -350,8 +312,10 @@ void main() {
 
     test('appends ?path=<encoded> when path is given', () async {
       final t = FakeHttpTransport();
-      t.setResponse(
-        statusCode: 200,
+      t.on(
+        'GET',
+        '/api/docs/bastion-ui/tree',
+        status: 200,
         body: {'repo': 'bastion-ui', 'root': 'docs', 'entries': []},
       );
       final api = makeApi(t);
@@ -366,8 +330,10 @@ void main() {
 
     test('decodes a full DocTreeDto payload', () async {
       final t = FakeHttpTransport();
-      t.setResponse(
-        statusCode: 200,
+      t.on(
+        'GET',
+        '/api/docs/bastion-ui/tree',
+        status: 200,
         body: {
           'repo': 'bastion-ui',
           'root': '',
@@ -388,7 +354,12 @@ void main() {
 
     test('throws FatalAuthError on 401', () async {
       final t = FakeHttpTransport();
-      t.setResponse(statusCode: 401, body: _unauthorizedBody);
+      t.on(
+        'GET',
+        '/api/docs/bastion-ui/tree',
+        status: 401,
+        body: _unauthorizedBody,
+      );
       final api = makeApi(t);
 
       await expectLater(
@@ -399,7 +370,12 @@ void main() {
 
     test('throws ApiError on 500', () async {
       final t = FakeHttpTransport();
-      t.setResponse(statusCode: 500, body: 'internal server error');
+      t.on(
+        'GET',
+        '/api/docs/bastion-ui/tree',
+        status: 500,
+        body: 'internal server error',
+      );
       final api = makeApi(t);
 
       await expectLater(
@@ -412,7 +388,12 @@ void main() {
       'throws ApiError (not a silent empty object) on malformed body',
       () async {
         final t = FakeHttpTransport();
-        t.setResponse(statusCode: 200, body: 'not-json!!');
+        t.on(
+          'GET',
+          '/api/docs/bastion-ui/tree',
+          status: 200,
+          body: 'not-json!!',
+        );
         final api = makeApi(t);
 
         await expectLater(
@@ -426,8 +407,10 @@ void main() {
   group('BastionApi.getDocsFile', () {
     test('hits GET /api/docs/{repo}/file?path=<encoded>', () async {
       final t = FakeHttpTransport();
-      t.setResponse(
-        statusCode: 200,
+      t.on(
+        'GET',
+        '/api/docs/bastion-ui/file',
+        status: 200,
         body: {
           'repo': 'bastion-ui',
           'path': 'docs/api.md',
@@ -447,8 +430,10 @@ void main() {
 
     test('URL-encodes the repo segment', () async {
       final t = FakeHttpTransport();
-      t.setResponse(
-        statusCode: 200,
+      t.on(
+        'GET',
+        '/api/docs/my%20repo/file',
+        status: 200,
         body: {'repo': 'my repo', 'path': 'a.md', 'content': '', 'bytes': 0},
       );
       final api = makeApi(t);
@@ -463,8 +448,10 @@ void main() {
 
     test('decodes a full DocFileDto payload', () async {
       final t = FakeHttpTransport();
-      t.setResponse(
-        statusCode: 200,
+      t.on(
+        'GET',
+        '/api/docs/bastion-ui/file',
+        status: 200,
         body: {
           'repo': 'bastion-ui',
           'path': 'docs/api.md',
@@ -483,7 +470,12 @@ void main() {
 
     test('throws FatalAuthError on 401', () async {
       final t = FakeHttpTransport();
-      t.setResponse(statusCode: 401, body: _unauthorizedBody);
+      t.on(
+        'GET',
+        '/api/docs/bastion-ui/file',
+        status: 401,
+        body: _unauthorizedBody,
+      );
       final api = makeApi(t);
 
       await expectLater(
@@ -494,8 +486,10 @@ void main() {
 
     test('throws ApiError on a rejected traversal path (400)', () async {
       final t = FakeHttpTransport();
-      t.setResponse(
-        statusCode: 400,
+      t.on(
+        'GET',
+        '/api/docs/bastion-ui/file',
+        status: 400,
         body: {'code': 'C006', 'message': 'path traversal rejected'},
       );
       final api = makeApi(t);
@@ -510,7 +504,12 @@ void main() {
       'throws ApiError (not a silent empty object) on malformed body',
       () async {
         final t = FakeHttpTransport();
-        t.setResponse(statusCode: 200, body: 'not-json!!');
+        t.on(
+          'GET',
+          '/api/docs/bastion-ui/file',
+          status: 200,
+          body: 'not-json!!',
+        );
         final api = makeApi(t);
 
         await expectLater(

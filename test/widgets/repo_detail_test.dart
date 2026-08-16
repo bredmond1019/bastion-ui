@@ -16,38 +16,22 @@ import 'package:bastion_ui/state/sessions_provider.dart'
 import 'package:bastion_ui/state/workflows_provider.dart';
 import 'package:bastion_ui/widgets/workflow_progress.dart';
 
+import '../support/fake_http_transport.dart';
+
 // ---------------------------------------------------------------------------
 // Fakes
 // ---------------------------------------------------------------------------
 
-/// A no-op transport for `bastionApiProvider` — this file's tests exercise
-/// the status/handoff/workflow fields, not `repoBoardProvider` (`BU.13.C`
-/// task 1), but the screen now watches it as of task 3's stat row, so
-/// `bastionApiProvider` must resolve to *something* for the screen to build
-/// at all. A 204/empty response resolves `repoBoardProvider` to its error
-/// state, which none of these tests assert on.
-final class _FakeHttpTransport implements HttpTransport {
-  ({int statusCode, String body}) _consume() => (statusCode: 204, body: '');
-
-  @override
-  Future<({int statusCode, String body})> get(
-    String url, {
-    Map<String, String> headers = const {},
-  }) async => _consume();
-
-  @override
-  Future<({int statusCode, String body})> post(
-    String url, {
-    Map<String, String> headers = const {},
-    String? body,
-  }) async => _consume();
-
-  @override
-  Future<({int statusCode, String body})> delete(
-    String url, {
-    Map<String, String> headers = const {},
-  }) async => _consume();
-}
+/// Builds the shared [FakeHttpTransport] for `bastionApiProvider` — this
+/// file's tests exercise the status/handoff/workflow fields, not
+/// `repoBoardProvider` (`BU.13.C` task 1), but the screen now watches it as
+/// of task 3's stat row, so `bastionApiProvider` must resolve to *something*
+/// for the screen to build at all. `RepoDetailScreen`/`repoBoardProvider`
+/// only ever call `GET /api/board`; a 204/empty response there resolves
+/// `repoBoardProvider` to its error state, which none of these tests assert
+/// on — matching the pre-migration always-204 fake's effective behavior.
+FakeHttpTransport _buildTransport() =>
+    FakeHttpTransport()..on('GET', '/api/board', status: 204, body: '');
 
 class _FakeRepoWorkflowsNotifier extends StateNotifier<RepoWorkflowsState>
     implements RepoWorkflowsNotifier {
@@ -91,7 +75,7 @@ Widget _buildScreen({
           host: 'test-host',
           port: 4317,
           token: 'test-token',
-          transport: _FakeHttpTransport(),
+          transport: _buildTransport(),
         ),
       ),
       repoWorkflowsProvider(repoName).overrideWith(

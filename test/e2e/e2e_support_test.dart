@@ -20,6 +20,7 @@ import 'package:bastion_ui/services/bastion_api.dart';
 import 'package:bastion_ui/services/bastion_socket.dart';
 import 'package:bastion_ui/state/pane_provider.dart' show paneTopic;
 
+import '../support/fake_http_transport.dart';
 import 'e2e_support.dart';
 
 // ---------------------------------------------------------------------------
@@ -78,54 +79,44 @@ BastionSocket makeSocket(List<FakeWsTransport> transports) {
 // ---------------------------------------------------------------------------
 // Fake HTTP transport (for BastionApi)
 // ---------------------------------------------------------------------------
+//
+// `withManagedSession`'s success and callback-throws-but-cleanup-still-runs
+// cases only ever *record* create/delete calls, so they migrate cleanly onto
+// the shared, routing-aware `test/support/fake_http_transport.dart` fixture.
+// The cleanup-failure case needs `delete()` to *throw* an arbitrary object
+// (simulating a transport-level failure rather than an HTTP error status) —
+// the shared fixture only ever returns a `(statusCode, body)` pair and has
+// no throw-injection mechanism, so per this ticket's Amendment Log that one
+// case keeps a small local stub scoped to exactly that behavior rather than
+// widening the shared fixture's contract.
 
-class FakeHttpTransport implements HttpTransport {
-  final List<String> createdSessions = [];
-  final List<String> deletedSessions = [];
-
-  /// When set, [post] to the sessions-create endpoint throws this instead
-  /// of recording the call.
-  Object? createError;
-
-  /// When set, [delete] throws this instead of recording the call.
-  Object? deleteError;
-
+/// Local throw-injecting stub for [HttpTransport], scoped to the single test
+/// (`withManagedSession` / "a cleanup failure does not mask the original
+/// result") that needs `delete()` to throw instead of returning a response.
+/// See the note above and this ticket's Amendment Log for why the shared
+/// `FakeHttpTransport` cannot express this.
+class _ThrowingDeleteHttpTransport implements HttpTransport {
   @override
   Future<({int statusCode, String body})> get(
     String url, {
     Map<String, String> headers = const {},
-  }) async {
-    return (statusCode: 200, body: '{}');
-  }
+  }) async => (statusCode: 200, body: '{}');
 
   @override
   Future<({int statusCode, String body})> post(
     String url, {
     Map<String, String> headers = const {},
     String? body,
-  }) async {
-    if (url.endsWith('/api/sessions')) {
-      if (createError != null) throw createError!;
-      final decoded = jsonDecode(body ?? '{}') as Map<String, dynamic>;
-      createdSessions.add(decoded['name'] as String);
-      return (statusCode: 201, body: '{}');
-    }
-    return (statusCode: 204, body: '');
-  }
+  }) async => (statusCode: 201, body: '{}');
 
   @override
   Future<({int statusCode, String body})> delete(
     String url, {
     Map<String, String> headers = const {},
-  }) async {
-    if (deleteError != null) throw deleteError!;
-    final name = Uri.decodeComponent(url.split('/').last);
-    deletedSessions.add(name);
-    return (statusCode: 204, body: '');
-  }
+  }) async => throw Exception('delete failed');
 }
 
-BastionApi makeApi(FakeHttpTransport transport) => BastionApi(
+BastionApi makeApi(HttpTransport transport) => BastionApi(
   host: 'test-host',
   port: 4317,
   token: 'test-token',
@@ -297,7 +288,9 @@ void main() {
   // -------------------------------------------------------------------------
   group('withManagedSession', () {
     test('returns callback value and deletes the session on success', () async {
-      final transport = FakeHttpTransport();
+      final transport = FakeHttpTransport()
+        ..on('POST', '/api/sessions', status: 201, body: '{}')
+        ..on('DELETE', '/api/sessions/my-session', status: 204, body: '');
       final api = makeApi(transport);
 
       final result = await withManagedSession<String>(
@@ -307,14 +300,19 @@ void main() {
       );
 
       expect(result, 'ok:my-session');
-      expect(transport.createdSessions, ['my-session']);
-      expect(transport.deletedSessions, ['my-session']);
+      final createBody =
+          jsonDecode(transport.lastCallTo('POST', '/api/sessions')!.body!)
+              as Map<String, dynamic>;
+      expect(createBody['name'], 'my-session');
+      expect(transport.callCount('DELETE', '/api/sessions/my-session'), 1);
     });
 
     test(
       'deletes the session in finally and rethrows when callback throws',
       () async {
-        final transport = FakeHttpTransport();
+        final transport = FakeHttpTransport()
+          ..on('POST', '/api/sessions', status: 201, body: '{}')
+          ..on('DELETE', '/api/sessions/my-session', status: 204, body: '');
         final api = makeApi(transport);
 
         await expectLater(
@@ -326,18 +324,20 @@ void main() {
           throwsA(isA<StateError>()),
         );
 
-        expect(transport.createdSessions, ['my-session']);
+        final createBody =
+            jsonDecode(transport.lastCallTo('POST', '/api/sessions')!.body!)
+                as Map<String, dynamic>;
+        expect(createBody['name'], 'my-session');
         expect(
-          transport.deletedSessions,
-          ['my-session'],
+          transport.callCount('DELETE', '/api/sessions/my-session'),
+          1,
           reason: 'cleanup must still run when the callback throws',
         );
       },
     );
 
     test('a cleanup failure does not mask the original result', () async {
-      final transport = FakeHttpTransport()
-        ..deleteError = Exception('delete failed');
+      final transport = _ThrowingDeleteHttpTransport();
       final api = makeApi(transport);
 
       final result = await withManagedSession<String>(
