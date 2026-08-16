@@ -48,6 +48,21 @@ const String bastionServeHarnessTestToken = 'e2e-test-token';
 /// A deliberately-wrong token for driving the fatal-auth (401) path.
 const String bastionServeHarnessWrongToken = 'e2e-wrong-token';
 
+/// Default budget for a spawned `bastion serve` child process to answer
+/// `GET /health` with 200 before the harness gives up and reports a boot
+/// failure. 15s was picked as generous headroom over the process's typical
+/// warm-start cost (binary load + port bind + route registration) on a
+/// shared dev machine, while still failing a genuinely-stuck spawn (bad
+/// binary, port contention, a hung dependency) inside a single test's
+/// patience rather than the suite's. Like [e2e_support.dart]'s
+/// `kDefaultCollectorTimeout`, this value deliberately does not try to
+/// distinguish "slow but correct" from "actually hung" — it is one shared
+/// default, not a diagnostic. Call sites that know a given boot is
+/// legitimately slower (e.g. under load, or with a larger fixture
+/// workspace) should pass their own `readyTimeout:` override rather than
+/// widening this default.
+const Duration kDefaultServeReadyTimeout = Duration(seconds: 15);
+
 /// Env var that flips the e2e test from silent self-skip to hard failure
 /// when no `bastion` binary can be located. Set it (to a truthy value) in
 /// CI or any run that must guarantee the service-level e2e actually ran,
@@ -273,7 +288,7 @@ final class BastionServeHarness {
   /// `~/.config/bastion/config.toml`. When `false` (the default), the spawn
   /// env is unchanged from before this seam existed.
   static Future<BastionServeHarness?> start({
-    Duration readyTimeout = const Duration(seconds: 15),
+    Duration readyTimeout = kDefaultServeReadyTimeout,
     bool workspaceFixture = false,
   }) async {
     final binaryPath = locateBinary();
@@ -360,7 +375,7 @@ final class BastionServeHarness {
   /// TIME_WAIT); throws a [StateError] only if every attempt fails to become
   /// ready within [readyTimeout].
   Future<void> restart({
-    Duration readyTimeout = const Duration(seconds: 15),
+    Duration readyTimeout = kDefaultServeReadyTimeout,
     int maxAttempts = 5,
   }) async {
     _process.kill(ProcessSignal.sigkill);
