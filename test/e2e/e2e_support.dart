@@ -35,6 +35,23 @@ import 'package:bastion_ui/state/connection_provider.dart'
     show ConnectionStatus;
 import 'package:bastion_ui/state/pane_provider.dart' show paneTopic;
 
+/// Shared default timeout for this file's socket-stream collectors
+/// ([collectEvents], [collectFrames], [awaitStatus]).
+///
+/// 30 seconds is picked as a budget generous enough that a correct
+/// `bastion serve` under normal load on a shared dev machine reliably
+/// finishes within it, not as a tuned bound on any measured latency
+/// distribution. It deliberately does **not** try to distinguish a
+/// slow-but-correct server from a genuinely hung one on a shared
+/// machine — that would need a different signal (progress frames,
+/// health polling) than a single wall-clock cutoff. Per-call-site
+/// overrides elsewhere in `test/e2e/` (10s-180s) are deliberate
+/// widenings for operations known to be slower than this default
+/// (reconnect, spawn, long-running budgets), not evidence this default
+/// itself is wrong — this constant only names and documents the shared
+/// starting point those overrides deviate from.
+const Duration kDefaultCollectorTimeout = Duration(seconds: 30);
+
 /// Returns whether the `tmux` binary is resolvable on PATH.
 ///
 /// Uses a synchronous, non-throwing probe: runs `tmux -V` and treats any
@@ -171,7 +188,7 @@ Future<List<EventFrame>> collectEvents(
   BastionSocket socket, {
   required String event,
   int count = 1,
-  Duration timeout = const Duration(seconds: 30),
+  Duration timeout = kDefaultCollectorTimeout,
 }) {
   final collected = <EventFrame>[];
   final completer = Completer<List<EventFrame>>();
@@ -264,7 +281,7 @@ Future<List<BastionFrame>> collectFrames(
   BastionSocket socket, {
   required bool Function(BastionFrame frame) match,
   int count = 1,
-  Duration timeout = const Duration(seconds: 30),
+  Duration timeout = kDefaultCollectorTimeout,
 }) {
   final collected = <BastionFrame>[];
   final completer = Completer<List<BastionFrame>>();
@@ -316,7 +333,7 @@ Future<List<BastionFrame>> collectFrames(
 Future<void> awaitStatus(
   BastionSocket socket,
   ConnectionStatus target, {
-  Duration timeout = const Duration(seconds: 30),
+  Duration timeout = kDefaultCollectorTimeout,
 }) {
   if (socket.status == target) return Future<void>.value();
   return socket.statusStream
