@@ -2,12 +2,49 @@
 type: Log
 title: BastionUI Development Log
 description: Chronological log of work completed for BastionUI.
-timestamp: "2026-08-15T20:45:00Z"
+timestamp: "2026-08-16T02:15:00Z"
 ---
 
 # Log — BastionUI
 
 *Append-only working log. One dated entry per session. Newest entries at the top.*
+
+---
+
+## [2026-08-16]
+
+### Proved the live-run path for real, then went further: the phone triggering a real agent session
+
+- **What:** Verified `BU.13.E`'s headline acceptance criterion live against a real
+  engine-mounted `bastion serve` and a real device: fired a `RESEARCH_AGENT` run outside the app
+  and watched the phone's Runs tab update with no interaction — it didn't, at first. Root-caused
+  it to a genuine gap in `bastion`'s D17 push design (`run_transition` never fires on a run's
+  *first* observation, only on a later status change or disappearance — a run whose status never
+  changes while live, like this one, gets no push at all), not a bug per se, and closed it with a
+  periodic `GET /api/runs` re-seed safety net in `lib/state/runs_provider.dart`
+  (`runsReseedIntervalProvider`, commit `5793399`). Re-verified live end to end: a fresh
+  `RESEARCH_AGENT` run appeared on the phone within ~22s and cleanly disappeared on completion,
+  captured via `adb screencap` (no Patrol needed for a one-off visual check).
+  Then closed `BU.ticket.finish-fake-transport-migration` (all 7 remaining local
+  `FakeHttpTransport` copies migrated, PR #9 merged) and bumped `kServeApiPin` to v0.32
+  (additive upstream change, no DTO work needed).
+  Built a new Patrol harness (`patrol_test/trigger_sdlc_flow_test.dart`) to drive the whole app
+  from taps — not to watch state, but to *trigger* a real `/sdlc-flow` run via the phone's spawn
+  action. First run surfaced two real bugs: this repo's invoke sheet spawns into `bastion
+  serve`'s own cwd when the Directory field is left blank (fixed by setting it explicitly), and
+  a genuine race in `bastion`'s `wait_for_claude` readiness check that can silently drop the
+  triggering command (filed as `BA.ticket.spawn-command-delivery-race` in `bastion`, fixed there
+  via `/sdlc-task`, verified 3/3 against a real server). The two fixes haven't been proven
+  together yet — the running `:4317` server instance still needs a restart onto the fixed binary.
+- **Why:** The Runs tab shipped in Phase 13 with its core promise — a run started elsewhere
+  changes state with no user interaction — never actually exercised end to end; the dev harness
+  never mounts the engine, so every prior "pass" was the honest-empty-state path, not the real
+  one. Once that was finally provable, the natural next question was whether the phone could be
+  the thing that *starts* the run, not just watches it — which is what actually makes this a
+  remote operator surface rather than a read-only dashboard.
+- **Refs:** `planning/handoff.md`; `BA.ticket.spawn-command-delivery-race` (in `bastion`,
+  `core/_planning/bastion/ticket-spawn-command-delivery-race/tasks.md`); PR #9
+  (`bastion-ui`); D17 (`bastion/docs/serve-api.md` §8.3).
 
 ---
 
