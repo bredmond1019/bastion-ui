@@ -91,6 +91,23 @@ question is the non-gating `e2e-serve-contract` check's job, not the integration
 integration tier proves the client *encodes requests and decodes responses the way the
 fixtures say it should*; it cannot prove the fixtures are still correct.
 
+### Every tier builds *debug*, so release-only defects are invisible
+
+Unit, widget, integration, the `e2e` tag and Patrol all run debug builds. Anything that
+differs between debug and release is therefore unobservable to every check in this repo.
+
+This is not hypothetical. On 2026-08-18 a manual `flutter run --release` pass found that
+`android.permission.INTERNET` was declared only in `android/app/src/debug/AndroidManifest.xml`
+and `.../profile/` — Flutter's default scaffolding — and never in `main`. **Every release build
+therefore had no network access at all**, failing each socket with
+`SocketException: OS Error: Operation not permitted, errno = 1`. For a thin client over
+`bastion serve` that is total failure: the app installs and does nothing.
+
+The suite was fully green throughout, because the debug manifest supplied the permission to
+every test. `test/android_manifest_test.dart` now pins that one symptom, but the general class
+remains unguarded — periodically driving a real `--release` build is the only thing that closes
+it. See `visual_smoke/README.md` for the capture convention.
+
 ## Manual dev environment — device + a real `bastion serve`
 
 Tier 3 (and any other by-hand check against a live server, e.g. verifying a fix, running
