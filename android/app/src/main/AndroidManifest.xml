@@ -1,4 +1,14 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Required in the MAIN manifest, not just debug/profile. Flutter's
+         scaffolding declares INTERNET only in android/app/src/debug and
+         .../profile, so a RELEASE build ships without it and every socket
+         fails with `SocketException: OS Error: Operation not permitted,
+         errno = 1` (EPERM). BastionUI is a thin client over `bastion serve`
+         and is completely non-functional without network access.
+         Found 2026-08-18 by a manual release-build run on a real emulator;
+         no test caught it because the whole suite runs debug builds.
+         Pinned by test/android_manifest_test.dart. -->
+    <uses-permission android:name="android.permission.INTERNET"/>
     <application
         android:label="bastion_ui"
         android:name="${applicationName}"
