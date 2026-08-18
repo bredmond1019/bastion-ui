@@ -190,6 +190,19 @@ class _FakeSecureStorage extends Fake implements FlutterSecureStorage {
     MacOsOptions? mOptions,
     WindowsOptions? wOptions,
   }) async => _store[key];
+
+  @override
+  Future<void> delete({
+    required String key,
+    IOSOptions? iOptions,
+    AndroidOptions? aOptions,
+    LinuxOptions? lOptions,
+    WebOptions? webOptions,
+    MacOsOptions? mOptions,
+    WindowsOptions? wOptions,
+  }) async {
+    _store.remove(key);
+  }
 }
 
 /// Reproduces `_ConnectedBody`'s three-tab bottom-nav structure. That class
@@ -546,6 +559,12 @@ class _DisconnectedNotifier extends StateNotifier<ConnectionState>
 
   @override
   Future<String?> readToken() async => null;
+
+  @override
+  Future<String?> readEngineKey() async => null;
+
+  @override
+  Future<void> saveEngineKey(String? key) async {}
 
   @override
   void updateStatus(ConnectionStatus status) {
