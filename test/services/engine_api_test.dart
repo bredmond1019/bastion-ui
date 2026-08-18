@@ -256,4 +256,476 @@ void main() {
       },
     );
   });
+
+  group('EngineApi.pauseRun', () {
+    test('hits POST /events/{run_id}/pause with no /api prefix and '
+        'X-API-Key', () async {
+      final t = FakeHttpTransport();
+      t.on(
+        'POST',
+        '/events/run-1/pause',
+        status: 202,
+        body: {'run_id': 'run-1', 'status': 'pausing'},
+      );
+      final engine = makeEngine(t);
+
+      await engine.pauseRun('run-1');
+
+      expect(t.calls.single.url, 'http://127.0.0.1:4317/events/run-1/pause');
+      expect(t.calls.single.url.contains('/api'), isFalse);
+      expect(t.calls.single.headers['X-API-Key'], _sentinelKey);
+    });
+
+    test('202 maps to PausePausing, named for the in-flight verb', () async {
+      final t = FakeHttpTransport();
+      t.on(
+        'POST',
+        '/events/run-1/pause',
+        status: 202,
+        body: {'run_id': 'run-1', 'status': 'pausing'},
+      );
+      final engine = makeEngine(t);
+
+      final outcome = await engine.pauseRun('run-1');
+
+      expect(outcome, isA<PausePausing>());
+      expect((outcome as PausePausing).runId, 'run-1');
+      expect(outcome.status, 'pausing');
+    });
+
+    test('409 maps to PauseAlreadySuspended', () async {
+      final t = FakeHttpTransport();
+      t.on(
+        'POST',
+        '/events/run-1/pause',
+        status: 409,
+        body: {
+          'run_id': 'run-1',
+          'status': 'suspended',
+          'error': 'run is already suspended',
+        },
+      );
+      final engine = makeEngine(t);
+
+      final outcome = await engine.pauseRun('run-1');
+
+      expect(outcome, isA<PauseAlreadySuspended>());
+      expect(
+        (outcome as PauseAlreadySuspended).error,
+        'run is already suspended',
+      );
+    });
+
+    test('404 maps to PauseNotFound', () async {
+      final t = FakeHttpTransport();
+      t.on(
+        'POST',
+        '/events/run-1/pause',
+        status: 404,
+        body: {'error': 'unknown or finished run'},
+      );
+      final engine = makeEngine(t);
+
+      final outcome = await engine.pauseRun('run-1');
+
+      expect(outcome, isA<PauseNotFound>());
+      expect((outcome as PauseNotFound).error, 'unknown or finished run');
+    });
+
+    test('401 surfaces as FatalAuthError', () async {
+      final t = FakeHttpTransport();
+      t.on(
+        'POST',
+        '/events/run-1/pause',
+        status: 401,
+        body: {'error': 'unauthorized', 'code': 'unauthorized'},
+      );
+      final engine = makeEngine(t);
+
+      await expectLater(
+        engine.pauseRun('run-1'),
+        throwsA(isA<FatalAuthError>()),
+      );
+    });
+
+    test('a not-configured client issues zero requests', () async {
+      final t = FakeHttpTransport();
+      final engine = makeEngine(t, key: null);
+
+      await expectLater(
+        engine.pauseRun('run-1'),
+        throwsA(isA<EngineNotConfiguredError>()),
+      );
+      expect(t.calls, isEmpty);
+    });
+  });
+
+  group('EngineApi.resumeRun', () {
+    test('hits POST /events/{event_id}/resume with no /api prefix and '
+        'X-API-Key', () async {
+      final t = FakeHttpTransport();
+      t.on(
+        'POST',
+        '/events/evt-1/resume',
+        status: 202,
+        body: {
+          'run_id': 'run-1',
+          'event_id': 'evt-1',
+          'status': 'resuming',
+          'resume_at': '2026-08-18T00:00:00Z',
+        },
+      );
+      final engine = makeEngine(t);
+
+      await engine.resumeRun('evt-1');
+
+      expect(t.calls.single.url, 'http://127.0.0.1:4317/events/evt-1/resume');
+      expect(t.calls.single.url.contains('/api'), isFalse);
+      expect(t.calls.single.headers['X-API-Key'], _sentinelKey);
+    });
+
+    test('202 maps to ResumeResuming, named for the in-flight verb', () async {
+      final t = FakeHttpTransport();
+      t.on(
+        'POST',
+        '/events/evt-1/resume',
+        status: 202,
+        body: {
+          'run_id': 'run-1',
+          'event_id': 'evt-1',
+          'status': 'resuming',
+          'resume_at': '2026-08-18T00:00:00Z',
+        },
+      );
+      final engine = makeEngine(t);
+
+      final outcome = await engine.resumeRun('evt-1');
+
+      expect(outcome, isA<ResumeResuming>());
+      final resuming = outcome as ResumeResuming;
+      expect(resuming.runId, 'run-1');
+      expect(resuming.eventId, 'evt-1');
+      expect(resuming.status, 'resuming');
+      expect(resuming.resumeAt, '2026-08-18T00:00:00Z');
+    });
+
+    test('409 maps to ResumeAlreadyResuming', () async {
+      final t = FakeHttpTransport();
+      t.on(
+        'POST',
+        '/events/evt-1/resume',
+        status: 409,
+        body: {'error': 'resume already in flight'},
+      );
+      final engine = makeEngine(t);
+
+      final outcome = await engine.resumeRun('evt-1');
+
+      expect(outcome, isA<ResumeAlreadyResuming>());
+      expect(
+        (outcome as ResumeAlreadyResuming).error,
+        'resume already in flight',
+      );
+    });
+
+    test('404 maps to ResumeNotFound', () async {
+      final t = FakeHttpTransport();
+      t.on(
+        'POST',
+        '/events/evt-1/resume',
+        status: 404,
+        body: {'error': 'unknown or non-resumable run'},
+      );
+      final engine = makeEngine(t);
+
+      final outcome = await engine.resumeRun('evt-1');
+
+      expect(outcome, isA<ResumeNotFound>());
+      expect((outcome as ResumeNotFound).error, 'unknown or non-resumable run');
+    });
+
+    test('422 maps to ResumePolicyFailed and carries the server message '
+        'through', () async {
+      final t = FakeHttpTransport();
+      t.on(
+        'POST',
+        '/events/evt-1/resume',
+        status: 422,
+        body: {
+          'error': 'policy resolution failed',
+          'message': 'unknown workflow_type: mystery-flow',
+        },
+      );
+      final engine = makeEngine(t);
+
+      final outcome = await engine.resumeRun('evt-1');
+
+      expect(outcome, isA<ResumePolicyFailed>());
+      final failed = outcome as ResumePolicyFailed;
+      expect(failed.error, 'policy resolution failed');
+      expect(failed.message, 'unknown workflow_type: mystery-flow');
+    });
+
+    test('401 surfaces as FatalAuthError', () async {
+      final t = FakeHttpTransport();
+      t.on(
+        'POST',
+        '/events/evt-1/resume',
+        status: 401,
+        body: {'error': 'unauthorized', 'code': 'unauthorized'},
+      );
+      final engine = makeEngine(t);
+
+      await expectLater(
+        engine.resumeRun('evt-1'),
+        throwsA(isA<FatalAuthError>()),
+      );
+    });
+
+    test('a not-configured client issues zero requests', () async {
+      final t = FakeHttpTransport();
+      final engine = makeEngine(t, key: null);
+
+      await expectLater(
+        engine.resumeRun('evt-1'),
+        throwsA(isA<EngineNotConfiguredError>()),
+      );
+      expect(t.calls, isEmpty);
+    });
+  });
+
+  group('EngineApi.abortRun', () {
+    test('hits POST /events/{run_id}/abort with no /api prefix and '
+        'X-API-Key', () async {
+      final t = FakeHttpTransport();
+      t.on(
+        'POST',
+        '/events/run-1/abort',
+        status: 202,
+        body: {'run_id': 'run-1', 'status': 'aborting'},
+      );
+      final engine = makeEngine(t);
+
+      await engine.abortRun('run-1');
+
+      expect(t.calls.single.url, 'http://127.0.0.1:4317/events/run-1/abort');
+      expect(t.calls.single.url.contains('/api'), isFalse);
+      expect(t.calls.single.headers['X-API-Key'], _sentinelKey);
+    });
+
+    test('202 maps to AbortAborting, named for the in-flight verb', () async {
+      final t = FakeHttpTransport();
+      t.on(
+        'POST',
+        '/events/run-1/abort',
+        status: 202,
+        body: {'run_id': 'run-1', 'status': 'aborting'},
+      );
+      final engine = makeEngine(t);
+
+      final outcome = await engine.abortRun('run-1');
+
+      expect(outcome, isA<AbortAborting>());
+      expect((outcome as AbortAborting).runId, 'run-1');
+      expect(outcome.status, 'aborting');
+    });
+
+    test('404 maps to AbortNotFound', () async {
+      final t = FakeHttpTransport();
+      t.on(
+        'POST',
+        '/events/run-1/abort',
+        status: 404,
+        body: {'error': 'unknown or finished run'},
+      );
+      final engine = makeEngine(t);
+
+      final outcome = await engine.abortRun('run-1');
+
+      expect(outcome, isA<AbortNotFound>());
+      expect((outcome as AbortNotFound).error, 'unknown or finished run');
+    });
+
+    test('401 surfaces as FatalAuthError', () async {
+      final t = FakeHttpTransport();
+      t.on(
+        'POST',
+        '/events/run-1/abort',
+        status: 401,
+        body: {'error': 'unauthorized', 'code': 'unauthorized'},
+      );
+      final engine = makeEngine(t);
+
+      await expectLater(
+        engine.abortRun('run-1'),
+        throwsA(isA<FatalAuthError>()),
+      );
+    });
+
+    test('a not-configured client issues zero requests', () async {
+      final t = FakeHttpTransport();
+      final engine = makeEngine(t, key: null);
+
+      await expectLater(
+        engine.abortRun('run-1'),
+        throwsA(isA<EngineNotConfiguredError>()),
+      );
+      expect(t.calls, isEmpty);
+    });
+  });
+
+  group('EngineApi.listSuspended', () {
+    test(
+      'hits GET /events/suspended with no /api prefix and X-API-Key',
+      () async {
+        final t = FakeHttpTransport();
+        t.on('GET', '/events/suspended', status: 200, body: []);
+        final engine = makeEngine(t);
+
+        await engine.listSuspended();
+
+        expect(t.calls.single.url, 'http://127.0.0.1:4317/events/suspended');
+        expect(t.calls.single.url.contains('/api'), isFalse);
+        expect(t.calls.single.headers['X-API-Key'], _sentinelKey);
+      },
+    );
+
+    test(
+      'parses each row and preserves server ordering (newest first)',
+      () async {
+        final t = FakeHttpTransport();
+        t.on(
+          'GET',
+          '/events/suspended',
+          status: 200,
+          body: [
+            {
+              'run_id': 'run-2',
+              'workflow_type': 'deploy',
+              'created_at': '2026-08-17T00:00:00Z',
+              'suspended_at': '2026-08-18T00:00:00Z',
+              'resume_at': null,
+              'reason': 'operator-paused',
+            },
+            {
+              'run_id': 'run-1',
+              'workflow_type': 'ingest',
+              'created_at': '2026-08-16T00:00:00Z',
+              'suspended_at': '2026-08-16T01:00:00Z',
+              'resume_at': '2026-08-19T00:00:00Z',
+              'reason': 'awaiting-approval',
+            },
+          ],
+        );
+        final engine = makeEngine(t);
+
+        final rows = await engine.listSuspended();
+
+        expect(rows, hasLength(2));
+        expect(rows[0].runId, 'run-2');
+        expect(rows[0].workflowType, 'deploy');
+        expect(rows[0].reason, 'operator-paused');
+        expect(rows[1].runId, 'run-1');
+        expect(rows[1].resumeAt, '2026-08-19T00:00:00Z');
+      },
+    );
+
+    test('401 surfaces as FatalAuthError', () async {
+      final t = FakeHttpTransport();
+      t.on(
+        'GET',
+        '/events/suspended',
+        status: 401,
+        body: {'error': 'unauthorized', 'code': 'unauthorized'},
+      );
+      final engine = makeEngine(t);
+
+      await expectLater(engine.listSuspended(), throwsA(isA<FatalAuthError>()));
+    });
+
+    test('a not-configured client issues zero requests', () async {
+      final t = FakeHttpTransport();
+      final engine = makeEngine(t, key: null);
+
+      await expectLater(
+        engine.listSuspended(),
+        throwsA(isA<EngineNotConfiguredError>()),
+      );
+      expect(t.calls, isEmpty);
+    });
+  });
+
+  group('leak assertion — control routes (Standing Rule 7)', () {
+    test(
+      'the sentinel key appears nowhere in a pause 401 toString()',
+      () async {
+        final t = FakeHttpTransport();
+        t.on(
+          'POST',
+          '/events/run-1/pause',
+          status: 401,
+          body: {'error': 'unauthorized', 'code': 'unauthorized'},
+        );
+        final engine = makeEngine(t);
+
+        Object? caught;
+        try {
+          await engine.pauseRun('run-1');
+        } catch (e) {
+          caught = e;
+        }
+
+        expect(caught, isNotNull);
+        expect(caught.toString().contains(_sentinelKey), isFalse);
+      },
+    );
+
+    test(
+      'the sentinel key appears nowhere in a resume 500 toString()',
+      () async {
+        final t = FakeHttpTransport();
+        t.on(
+          'POST',
+          '/events/evt-1/resume',
+          status: 500,
+          body: 'internal error',
+        );
+        final engine = makeEngine(t);
+
+        Object? caught;
+        try {
+          await engine.resumeRun('evt-1');
+        } catch (e) {
+          caught = e;
+        }
+
+        expect(caught, isNotNull);
+        expect(caught.toString().contains(_sentinelKey), isFalse);
+      },
+    );
+
+    test(
+      'the sentinel key appears nowhere in an abort 500 toString()',
+      () async {
+        final t = FakeHttpTransport();
+        t.on(
+          'POST',
+          '/events/run-1/abort',
+          status: 500,
+          body: 'internal error',
+        );
+        final engine = makeEngine(t);
+
+        Object? caught;
+        try {
+          await engine.abortRun('run-1');
+        } catch (e) {
+          caught = e;
+        }
+
+        expect(caught, isNotNull);
+        expect(caught.toString().contains(_sentinelKey), isFalse);
+      },
+    );
+  });
 }
