@@ -103,5 +103,85 @@ void main() {
         {'PATH': '/usr/bin', 'LANG': 'en_US.UTF-8'},
       );
     });
+
+    test('still never forwards engine vars when forwardEngineEnv is omitted '
+        '(default false)', () {
+      expect(
+        bastionServeHarnessChildEnvironment(const {
+          'PATH': '/usr/bin',
+          'DATABASE_URL': 'postgres://example',
+          'BASTION_ENGINE_API_KEY': 'secret',
+        }),
+        {'PATH': '/usr/bin'},
+      );
+    });
+
+    test('opt-in forwardEngineEnv forwards DATABASE_URL and '
+        'BASTION_ENGINE_API_KEY from the parent environment', () {
+      expect(
+        bastionServeHarnessChildEnvironment(const {
+          'PATH': '/usr/bin',
+          'LANG': 'en_US.UTF-8',
+          'DATABASE_URL': 'postgres://example',
+          'BASTION_ENGINE_API_KEY': 'secret',
+        }, true),
+        {
+          'PATH': '/usr/bin',
+          'LANG': 'en_US.UTF-8',
+          'DATABASE_URL': 'postgres://example',
+          'BASTION_ENGINE_API_KEY': 'secret',
+        },
+      );
+    });
+
+    test('opt-in forwardEngineEnv omits engine vars that are absent or empty '
+        'in the parent environment', () {
+      expect(
+        bastionServeHarnessChildEnvironment(const {
+          'PATH': '/usr/bin',
+          'DATABASE_URL': '',
+        }, true),
+        {'PATH': '/usr/bin'},
+      );
+    });
+  });
+
+  group('bastionServeHarnessEngineMountAvailable', () {
+    test('is false when neither engine env var is present', () {
+      expect(
+        bastionServeHarnessEngineMountAvailable(const {'PATH': '/usr/bin'}),
+        isFalse,
+      );
+    });
+
+    test('is false when only one of the two engine env vars is present', () {
+      expect(
+        bastionServeHarnessEngineMountAvailable(const {
+          'PATH': '/usr/bin',
+          'DATABASE_URL': 'postgres://example',
+        }),
+        isFalse,
+      );
+    });
+
+    test('is false when an engine env var is present but empty', () {
+      expect(
+        bastionServeHarnessEngineMountAvailable(const {
+          'PATH': '/usr/bin',
+          'DATABASE_URL': 'postgres://example',
+          'BASTION_ENGINE_API_KEY': '',
+        }),
+        isFalse,
+      );
+    });
+
+    // Binary-availability is deliberately not exercised through an injected
+    // env here: BastionServeHarness.locateBinary() always reads the real
+    // `Platform.environment` / repo-relative candidates (by design — see
+    // its own doc), so it isn't independently fakeable via the
+    // parentEnvironment map this function accepts for the env-var half of
+    // the check. That half is exercised for real by every e2e test that
+    // calls BastionServeHarness.start (self-skips when locateBinary()
+    // returns null).
   });
 }
