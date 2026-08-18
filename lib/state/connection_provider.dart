@@ -20,6 +20,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 const _kHost = 'bastion.server.host';
 const _kPort = 'bastion.server.port';
 const _kToken = 'bastion.auth.token';
+const _kEngineKey = 'bastion.auth.engine_key';
 
 // ---------------------------------------------------------------------------
 // Value objects
@@ -148,6 +149,28 @@ class ConnectionNotifier extends StateNotifier<ConnectionState> {
 
   /// Read the stored bearer token (returns `null` if not yet configured).
   Future<String?> readToken() => _storage.read(key: _kToken);
+
+  /// Read the stored engine API key (returns `null` if not yet configured).
+  ///
+  /// Mirrors [readToken]. The engine key is a separate credential (§18.2.1)
+  /// stored under [_kEngineKey], never surfaced via [ConnectionConfig] or
+  /// [ConnectionState] (Rule 7 — neither value object may be able to emit a
+  /// secret through its `toString()`).
+  Future<String?> readEngineKey() => _storage.read(key: _kEngineKey);
+
+  /// Persist (or clear) the engine API key.
+  ///
+  /// A `null` or empty [key] DELETES the storage entry rather than writing
+  /// an empty value — serve-api §18.2.1 rejects an empty `X-API-Key` header
+  /// with 401, so on this side "empty" must mean "not configured", not
+  /// "configured with an empty secret".
+  Future<void> saveEngineKey(String? key) async {
+    if (key == null || key.isEmpty) {
+      await _storage.delete(key: _kEngineKey);
+    } else {
+      await _storage.write(key: _kEngineKey, value: key);
+    }
+  }
 
   // ---- Status transitions -------------------------------------------------
 
