@@ -10,11 +10,36 @@
 /// (`crates/engine-serve/tests/suspend_resume_http.rs`): a raw `POST
 /// /events/` against whatever workflow type the live server has registered
 /// (discovered via `EngineApi.getWorkflows()`, never hardcoded), with an
-/// empty event payload. `Workflow::walk` (engine-core) checks the
-/// `PauseSignal` *before* running the first node, so pausing immediately
-/// after the trigger accepts suspends the run at its start node without
-/// depending on that workflow type's own node bodies succeeding — this
-/// test only needs *a* run to exist, not a correct one.
+/// empty event payload.
+///
+/// **What this file actually proves (measured 2026-08-18 against the live
+/// engine on :4317).** Every registered workflow type in this environment
+/// runs to completion in milliseconds — `APPROVE_AND_RUN` went
+/// `created_at` .929050 -> `succeeded` .930713, ~1.7ms later — so there is
+/// no window in which any dispatchable run can be paused. `LEAD_INGEST`
+/// and `HARVEST_APPROVE` behave identically. The only registered type that
+/// would stay alive long enough to pause is `SDLC_FLOW`, and triggering
+/// that spawns real agent work on the operator's machine, which is out of
+/// bounds for a test. So `PausePausing` / `ResumeResuming` are NOT
+/// e2e-reachable in this environment (decision D-7, amended into
+/// `planning/BU.12.D/tasks.md` after an earlier version of this test
+/// asserted `PausePausing` against a run that had already succeeded and
+/// failed — the server was correct, the test's premise was not).
+///
+/// What IS reachable and asserted for real, against a real server:
+///   - abort against a known-absent run id -> `AbortNotFound`, no throw;
+///   - pause against a run that has genuinely already completed ->
+///     `PauseNotFound` — this is a REAL round trip that pins the 404
+///     mapping, obtained by triggering a real run and letting it finish;
+///   - resume against that same finished (non-resumable) run ->
+///     `ResumeNotFound`;
+///   - `listSuspended()` parses a real `GET /events/suspended` response —
+///     empty is a valid, non-throwing result in this environment.
+///
+/// The pausing/resuming outcomes are visibly `markTestSkipped` with the
+/// measured reason above rather than asserted against a run that cannot be
+/// paused, and rather than faking a long-running run to manufacture a
+/// pausable window.
 ///
 /// A registered workflow can still legitimately fail to dispatch in this
 /// environment (e.g. `SDLC_FLOW`'s policy resolution reads `harness.json`
@@ -90,6 +115,18 @@ Future<_TriggerResult> _triggerRun({
   }
 }
 
+/// Reason string shown by the two `markTestSkipped` calls for the
+/// not-e2e-reachable pausing/resuming outcomes — kept as one constant so
+/// both skip sites (and this file's own doc comment) stay in sync.
+const _pausingResumingUnreachableReason =
+    'PausePausing/ResumeResuming are not e2e-reachable in this '
+    'environment: every registered workflow type completes in ~2ms '
+    '(measured 2026-08-18, APPROVE_AND_RUN created .929050 -> succeeded '
+    '.930713), so no dispatchable run stays alive long enough to pause. '
+    'The only long-running type, SDLC_FLOW, would spawn real agent work '
+    'and is out of bounds for a test. See planning/BU.12.D/tasks.md '
+    'decision D-7.';
+
 void main() {
   group('run control e2e', () {
     BastionServeHarness? harness;
@@ -101,8 +138,9 @@ void main() {
       harness = null;
     });
 
-    test('pause then resume a real run against a real engine-mounted server; '
-        'abort against an absent run id is notFound, not a throw', () async {
+    test('pause/resume/abort/listSuspended map to their real notFound and '
+        'empty-list outcomes against a live engine-mounted server; '
+        'pausing/resuming are visibly skipped as unreachable', () async {
       if (!bastionServeHarnessEngineMountAvailable()) {
         const whereChecked =
             'checked BASTION_BIN, ../bastion/target/release/bastion, '
@@ -140,22 +178,26 @@ void main() {
 
       final engine = EngineApi(host: h.host, port: h.port, key: engineKey);
       try {
-        // --- abort against a known-absent run: notFound, no throw -----
+        // --- abort against a known-absent run: notFound, no throw ----
         final absentAbort = await engine.abortRun(_absentRunId);
         expect(absentAbort, isA<AbortNotFound>());
 
-        // --- discover a dispatchable workflow type ---------------------
+        // --- listSuspended parses a real response, empty included ----
+        final initialSuspended = await engine.listSuspended();
+        expect(initialSuspended, isA<List<SuspendedRunDto>>());
+
+        // --- discover a dispatchable workflow type --------------------
         final types = await engine.getWorkflows();
         if (types.isEmpty) {
           markTestSkipped(
             'engine-mounted server has no registered workflow types — '
-            'skipping the trigger/pause/resume assertions',
+            'skipping the trigger/pause/resume-on-finished assertions',
           );
           return;
         }
         final workflowType = types.first;
 
-        // --- trigger a real run over raw HTTP ---------------------------
+        // --- trigger a real run over raw HTTP --------------------------
         final baseUrl = 'http://${h.host}:${h.port}';
         final trigger = await _triggerRun(
           baseUrl: baseUrl,
@@ -166,13 +208,13 @@ void main() {
           // A registered type can still fail to DISPATCH in this
           // environment (e.g. SDLC_FLOW's policy resolution reads
           // harness.json off the server's working directory) — that is
-          // an environment property, not a contract property this block
-          // owns. Self-skip visibly rather than failing on it.
+          // an environment property, not a contract property this
+          // block owns. Self-skip visibly rather than failing on it.
           markTestSkipped(
             'POST /events/ for workflow_type "$workflowType" returned '
             '${trigger.statusCode} (${trigger.body}) instead of 202 — '
             'no dispatchable run obtainable in this environment, '
-            'skipping the pause/resume assertions',
+            'skipping the pause/resume-on-finished assertions',
           );
           return;
         }
@@ -180,33 +222,53 @@ void main() {
         expect(runId, isNotNull);
         expect(runId, isNotEmpty);
 
-        // --- pause: accepted outcome -------------------------------------
-        final pauseOutcome = await engine.pauseRun(runId!);
-        expect(pauseOutcome, isA<PausePausing>());
-        expect((pauseOutcome as PausePausing).runId, runId);
-
-        // --- the run appears in GET /events/suspended -------------------
-        final deadline = DateTime.now().add(const Duration(seconds: 10));
-        List<SuspendedRunDto> suspended = const [];
+        // --- let the run reach a terminal state. Every registered ------
+        // workflow type in this environment finishes in ~2ms, so a
+        // short poll is enough; if it is somehow still running after
+        // the deadline, this is one of the rare long-lived types and
+        // the pause/resume-on-finished assertions below are skipped
+        // rather than racing the run.
+        final deadline = DateTime.now().add(const Duration(seconds: 5));
+        bool reachedTerminal = false;
         while (DateTime.now().isBefore(deadline)) {
-          suspended = await engine.listSuspended();
-          if (suspended.any((entry) => entry.runId == runId)) {
+          final pauseProbe = await engine.pauseRun(runId!);
+          if (pauseProbe is PauseNotFound) {
+            reachedTerminal = true;
             break;
           }
-          await Future<void>.delayed(const Duration(milliseconds: 50));
+          if (pauseProbe is PausePausing) {
+            // Genuinely caught the run alive — this is the pausing
+            // outcome the earlier failing version of this test assumed
+            // was always reachable. Prove it directly if it happens,
+            // rather than discarding the signal.
+            expect(pauseProbe.runId, runId);
+            markTestSkipped(_pausingResumingUnreachableReason);
+            return;
+          }
+          await Future<void>.delayed(const Duration(milliseconds: 25));
         }
-        expect(
-          suspended.map((entry) => entry.runId),
-          contains(runId),
-          reason:
-              'run $runId never landed in GET /events/suspended within '
-              '10s of a 202 pause response',
-        );
 
-        // --- resume: accepted outcome -------------------------------------
+        if (!reachedTerminal) {
+          markTestSkipped(
+            'workflow_type "$workflowType" did not reach a terminal '
+            'state within 5s — cannot obtain the pause-on-finished '
+            'notFound mapping in this environment for this type',
+          );
+          return;
+        }
+
+        // --- pause against a finished run: real 404 round trip --------
+        final pauseOutcome = await engine.pauseRun(runId!);
+        expect(pauseOutcome, isA<PauseNotFound>());
+
+        // --- resume against that same non-resumable run: real 404 -----
         final resumeOutcome = await engine.resumeRun(runId);
-        expect(resumeOutcome, isA<ResumeResuming>());
-        expect((resumeOutcome as ResumeResuming).runId, runId);
+        expect(resumeOutcome, isA<ResumeNotFound>());
+
+        // --- pausing/resuming are not e2e-reachable here: skip visibly,
+        // never asserted against a run that cannot be paused, and never
+        // faked.
+        markTestSkipped(_pausingResumingUnreachableReason);
       } finally {
         engine.dispose();
       }
