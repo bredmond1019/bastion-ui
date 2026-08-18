@@ -17,7 +17,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../services/engine_api.dart';
 import '../state/connection_provider.dart';
+import '../theme/status_tones.dart';
 import '../theme/tokens.dart';
 import '../theme/typography.dart';
 import '../widgets/brand/brand.dart';
@@ -37,9 +39,17 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   late final TextEditingController _hostController;
   late final TextEditingController _portController;
   late final TextEditingController _tokenController;
+  late final TextEditingController _engineKeyController;
 
   bool _saving = false;
   bool _tokenObscured = true;
+  bool _engineKeyObscured = true;
+
+  /// Result of the most recent engine mount probe, or `null` before the
+  /// first probe has resolved. Rendered as a [StatusPill] so the operator
+  /// can tell "wrong key" from "server never mounted the engine" from
+  /// "not yet configured" — see [EngineStatus]'s five-way doc comment.
+  EngineStatus? _engineStatus;
 
   @override
   void initState() {
@@ -50,7 +60,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       text: config.port == 0 ? '4317' : config.port.toString(),
     );
     _tokenController = TextEditingController();
+    _engineKeyController = TextEditingController();
     _loadToken();
+    _loadEngineKey();
   }
 
   Future<void> _loadToken() async {
@@ -60,11 +72,40 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     }
   }
 
+  Future<void> _loadEngineKey() async {
+    final key =
+        await ref.read(connectionProvider.notifier).readEngineKey() ?? '';
+    if (mounted) {
+      _engineKeyController.text = key;
+    }
+    await _probeEngine();
+  }
+
+  /// Probes the engine mount using the CURRENTLY SAVED config/key (not the
+  /// unsaved contents of the text fields) and updates [_engineStatus].
+  ///
+  /// Never throws — [EngineApi.probeMount] captures every failure mode
+  /// (missing key, HTTP error, network failure) in its returned status.
+  Future<void> _probeEngine() async {
+    final config = ref.read(connectionProvider).config;
+    final key = await ref.read(connectionProvider.notifier).readEngineKey();
+    final engine = EngineApi(host: config.host, port: config.port, key: key);
+    try {
+      final status = await engine.probeMount();
+      if (mounted) {
+        setState(() => _engineStatus = status);
+      }
+    } finally {
+      engine.dispose();
+    }
+  }
+
   @override
   void dispose() {
     _hostController.dispose();
     _portController.dispose();
     _tokenController.dispose();
+    _engineKeyController.dispose();
     super.dispose();
   }
 
@@ -109,6 +150,13 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             port: int.parse(_portController.text.trim()),
             token: _tokenController.text.trim(),
           );
+      // Engine key is genuinely optional — an empty field is a valid save
+      // meaning "no engine access" (saveEngineKey deletes rather than
+      // persisting an empty value; task 1).
+      await ref
+          .read(connectionProvider.notifier)
+          .saveEngineKey(_engineKeyController.text.trim());
+      await _probeEngine();
       if (mounted) {
         ScaffoldMessenger.of(
           context,
@@ -117,6 +165,37 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     } finally {
       if (mounted) setState(() => _saving = false);
     }
+  }
+
+  /// Human-readable label for [_engineStatus], surfaced as a [StatusPill]
+  /// so the four/five outcomes stay visually distinguishable rather than
+  /// collapsing into a boolean.
+  ({String label, StatusPillTone tone}) _engineStatusPresentation(
+    EngineStatus? status,
+  ) {
+    return switch (status) {
+      null => (label: 'checking…', tone: StatusPillTone.inProgress),
+      EngineStatus.notConfigured => (
+        label: 'not configured',
+        tone: StatusPillTone.inProgress,
+      ),
+      EngineStatus.notMounted => (
+        label: 'engine not mounted on this server',
+        tone: StatusPillTone.needsYou,
+      ),
+      EngineStatus.unauthorized => (
+        label: 'key rejected',
+        tone: StatusPillTone.blocked,
+      ),
+      EngineStatus.available => (
+        label: 'connected',
+        tone: StatusPillTone.onTrack,
+      ),
+      EngineStatus.unreachable => (
+        label: 'server unreachable',
+        tone: StatusPillTone.blocked,
+      ),
+    };
   }
 
   /// Shared field decoration: [AppTokens.surfaceMuted] fill, hairline
@@ -239,6 +318,82 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                         autocorrect: false,
                         enableSuggestions: false,
                         validator: _validateToken,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+
+              // Engine group: optional Engine API key (X-API-Key, BU.12.A).
+              PanelCard(
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Eyebrow(label: 'Engine'),
+                      const SizedBox(height: 16),
+                      TextFormField(
+                        controller: _engineKeyController,
+                        style: AppTypography.textTheme.bodyMedium?.copyWith(
+                          color: AppTokens.ink,
+                        ),
+                        decoration: _fieldDecoration(
+                          labelText: 'Engine API key (optional)',
+                          hintText: 'Leave blank for no engine access',
+                          suffixIcon: IconButton(
+                            icon: Icon(
+                              _engineKeyObscured
+                                  ? Icons.visibility
+                                  : Icons.visibility_off,
+                              color: AppTokens.inkSoft,
+                            ),
+                            onPressed: () => setState(
+                              () => _engineKeyObscured = !_engineKeyObscured,
+                            ),
+                            tooltip: _engineKeyObscured
+                                ? 'Show key'
+                                : 'Hide key',
+                          ),
+                        ),
+                        obscureText: _engineKeyObscured,
+                        autocorrect: false,
+                        enableSuggestions: false,
+                        // No validator: an empty engine key is a valid,
+                        // intentional configuration (Standing Rule — see
+                        // task 4's acceptance criteria).
+                      ),
+                      const SizedBox(height: 12),
+                      Builder(
+                        builder: (context) {
+                          final presentation = _engineStatusPresentation(
+                            _engineStatus,
+                          );
+                          // [StatusPill] null-asserts the ambient
+                          // [StatusTones] extension; fall back to
+                          // [StatusTones.dark] when it is not registered
+                          // (e.g. a bare `MaterialApp` in a widget test)
+                          // rather than let this crash the screen.
+                          final ambientTheme = Theme.of(context);
+                          final theme =
+                              ambientTheme.extension<StatusTones>() == null
+                              ? ambientTheme.copyWith(
+                                  extensions: [StatusTones.dark],
+                                )
+                              : ambientTheme;
+                          return Align(
+                            alignment: Alignment.centerLeft,
+                            child: Theme(
+                              data: theme,
+                              child: StatusPill(
+                                tone: presentation.tone,
+                                label: presentation.label,
+                              ),
+                            ),
+                          );
+                        },
                       ),
                     ],
                   ),
