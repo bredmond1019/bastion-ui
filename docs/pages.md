@@ -157,6 +157,16 @@ other status, including `suspended`, upserts it in place). Renders one row per
 `RunSummaryDto` with a status badge (`_RunStatusVisual`: a `StatusTones` tone plus a
 distinct icon per wire status, not colour alone) and an `AgeChip`.
 
+The list header also carries a launch entry point (`BU.12.E` task 5) next to the
+`Eyebrow` — a small text-icon control (`TextButton.icon`, not a `FilledButton`,
+so it reads as secondary to the run rows), backed by its own lazily-constructed
+`EngineApi` + mount probe (`_RunsScreenState._initLaunchEngine`, same pattern as
+`_RunDetailBodyState`). Disabled with a distinguishable visible reason per
+`EngineStatus` cause (no key / not mounted / unauthorized / unreachable / checking)
+rather than hidden. Tapping it opens `LaunchSheet` (`lib/screens/launch_sheet.dart`,
+task 4) via `showLaunchSheet`; the runs list is already WS-live, so a successful
+launch's new run appears without a manual refetch.
+
 Tapping a row drills in (internal screen state, not a pushed route) to that run's
 `GET /api/runs/{id}` node list, rendering each `NodeTransitionDto` as a vertical row —
 a DAG view is out of scope for this block. `GET /api/runs` returning `200 []` (no
@@ -169,6 +179,22 @@ See `lib/screens/runs_screen.dart`'s doc comment and `test/e2e/runs_ws_e2e_test.
 for the real-server e2e cross-check (asserts the empty-state path honestly — the dev
 harness here has no engine mounted, so the live-update half of the flow isn't
 exercised e2e).
+
+## `LaunchSheet` (`BU.12.E`, `lib/screens/launch_sheet.dart`)
+
+Modal bottom sheet opened via `showLaunchSheet(context, {required EngineApi engine})`,
+which resolves the new run id on a successful (`202`) launch or `null` on any
+dismissal. Takes an already-constructed, already-probed `EngineApi` from its caller
+(mirrors `_RunDetailBodyState`'s pattern) rather than building its own — the caller
+owns the engine's lifecycle.
+
+Form fields: repo, workflow type (populated live from `engineWorkflowsProvider`'s
+registry, never hardcoded), and spec slug; one primary Launch action. Server-side
+`422` responses render as field-level errors (`InputDecoration.errorText`) for
+`repo`/`spec slug`/`workflow type`; `LaunchPolicyFailed`, `LaunchUnresolvableTargetRoot`,
+and any unrecognised `422` render as a sheet-level banner since they name no single
+field. On `LaunchAccepted`, the sheet invalidates `runsProvider` to force a fresh REST
+reseed so the new run appears immediately, then pops the route with the new run id.
 
 ## Route table (`BastionApp.onGenerateRoute`)
 

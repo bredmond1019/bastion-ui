@@ -69,6 +69,41 @@ REST client for `http://<host>:<port>`. Every request sends `Authorization: Bear
 All DTOs live in pure-Dart files (no Flutter imports) with `fromJson`/`toJson` and are
 unit-tested for round-trip decoding in `test/models/`.
 
+## `EngineApi` (`lib/services/engine_api.dart`)
+
+Separate client from `BastionApi` for the embedded engine mount (serve-api.md §18,
+v0.30). Root differences from `BastionApi`: no `/api` prefix (`http://<host>:<port>/workflows`,
+not `.../api/workflows`), auth via `X-API-Key` (never `Authorization: Bearer`), and every
+route degrades to a typed unavailability state rather than crashing when the server was
+started without `DATABASE_URL`/`BASTION_ENGINE_API_KEY`. `EngineNotConfiguredError` is
+thrown client-side (no request issued) whenever no key is held locally.
+
+| Method | Route | Returns | Notes |
+|---|---|---|---|
+| `probeMount()` | `GET /workflows` | `EngineStatus` | Never throws; the five-way result (`notConfigured` / `notMounted` / `unauthorized` / `available` / `unreachable`) distinguishes "no key" from "server not mounted" from "wrong key" |
+| `getWorkflows()` | `GET /workflows` | `List<String>` | Registered workflow-type registry, sorted; the only source of workflow-type names anywhere in the app |
+| `getWorkflowGraph(type)` | `GET /workflows/{type}/graph` | `Map<String, dynamic>` | Raw decoded JSON — no client-side DTO exists for the DAG shape |
+| `getEvent(runId)` | `GET /events/{id}` | `Map<String, dynamic>` | Raw event payload |
+| `launchRun({workflowType, data})` | `POST /events/` | `LaunchOutcome` | `BU.12.E`. Body is `{workflow_type, data}`; every documented outcome (`202` accepted, each of the five `422` classes, an unrecognised-`422` fallback) is a distinct sealed member rather than a collapsed bool |
+| `pauseRun(runId)` | `POST /events/{id}/pause` | `PauseOutcome` | `202` pausing / `409` already-suspended / `404` not-found |
+| `resumeRun(eventId)` | `POST /events/{id}/resume` | `ResumeOutcome` | `202` resuming / `409` already-resuming / `404` not-found / `422` policy-failed |
+| `abortRun(runId)` | `POST /events/{id}/abort` | `AbortOutcome` | `202` aborting / `404` not-found |
+| `listSuspended()` | `GET /events/suspended` | `List<SuspendedRunDto>` | Newest first, as returned by the server |
+
+`401` on any route is never a member of its outcome hierarchy — it always throws
+`FatalAuthError` via the shared `_checkStatus`, exactly as on `BastionApi`. `dispose()`
+releases the underlying transport.
+
+### `LaunchOutcome` (`BU.12.E`, `launchRun`)
+
+`LaunchAccepted { runId, eventId }` (`202`) · `LaunchUnknownWorkflowType(workflowType)` ·
+`LaunchUnknownRepo { repo, message? }` (`SDLC_FLOW` pre-flight only) ·
+`LaunchUnknownSpecSlug { specSlug, message? }` (`SDLC_FLOW` pre-flight only) ·
+`LaunchPolicyFailed { message? }` · `LaunchUnresolvableTargetRoot { message? }` — the five
+documented `422` classes — plus `LaunchUnknownRejection(rawBody)` for any `422` body this
+client does not recognise, so an upstream contract addition degrades to "the server
+rejected this, here is what it said" instead of crashing or being mislabelled.
+
 ## `BastionSocket` (`lib/services/bastion_socket.dart`)
 
 Manages `ws://<host>:<port>/ws` with capped exponential backoff reconnect (1s, 2s, 4s,
