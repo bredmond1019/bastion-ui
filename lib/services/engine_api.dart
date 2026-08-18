@@ -182,6 +182,71 @@ final class AbortNotFound extends AbortOutcome {
   const AbortNotFound(this.error);
 }
 
+/// Outcome of [EngineApi.launchRun] — `POST /events/` (serve-api.md §18,
+/// v0.30). Every documented status is a distinct member rather than a
+/// collapsed success/failure bool: the whole point of the server's
+/// `SDLC_FLOW` pre-flight is telling the caller *which field is wrong*,
+/// and collapsing the five 422 classes into one generic failure would
+/// throw that away.
+///
+/// `401` is NOT a member here, exactly as with [PauseOutcome] et al.: it
+/// is thrown as [FatalAuthError] by [EngineApi._checkStatus] — a rejected
+/// key is a client-wide fatal condition, not a per-launch outcome.
+sealed class LaunchOutcome {
+  const LaunchOutcome();
+}
+
+/// `202 {run_id, event_id}` — the run was accepted.
+final class LaunchAccepted extends LaunchOutcome {
+  final String runId;
+  final String eventId;
+  const LaunchAccepted({required this.runId, required this.eventId});
+}
+
+/// `422 {error:'unknown workflow_type', workflow_type}`.
+final class LaunchUnknownWorkflowType extends LaunchOutcome {
+  final String workflowType;
+  const LaunchUnknownWorkflowType(this.workflowType);
+}
+
+/// `422 {error:'unknown repo', repo, message}` — `SDLC_FLOW` pre-flight
+/// only.
+final class LaunchUnknownRepo extends LaunchOutcome {
+  final String repo;
+  final String? message;
+  const LaunchUnknownRepo({required this.repo, this.message});
+}
+
+/// `422 {error:'unknown spec_slug', spec_slug, message}` — `SDLC_FLOW`
+/// pre-flight only.
+final class LaunchUnknownSpecSlug extends LaunchOutcome {
+  final String specSlug;
+  final String? message;
+  const LaunchUnknownSpecSlug({required this.specSlug, this.message});
+}
+
+/// `422 {error:'policy resolution failed', message}`.
+final class LaunchPolicyFailed extends LaunchOutcome {
+  final String? message;
+  const LaunchPolicyFailed({this.message});
+}
+
+/// `422 {error:'unresolvable target root', message}`.
+final class LaunchUnresolvableTargetRoot extends LaunchOutcome {
+  final String? message;
+  const LaunchUnresolvableTargetRoot({this.message});
+}
+
+/// Any other `422` body — an `error` string this client does not
+/// recognise. The contract is upstream and pinned (Standing Rule 6) and
+/// may add classes; an unrecognised one MUST degrade to "the server
+/// rejected this, here is what it said" rather than crash or be
+/// mislabelled as one of the known classes.
+final class LaunchUnknownRejection extends LaunchOutcome {
+  final String rawBody;
+  const LaunchUnknownRejection(this.rawBody);
+}
+
 /// One row of `GET /events/suspended` — a currently-suspended run.
 final class SuspendedRunDto {
   final String runId;
@@ -258,6 +323,11 @@ final class EngineApi {
   Map<String, String> get _headers => {
     'X-API-Key': _key!,
     'Accept': 'application/json',
+  };
+
+  Map<String, String> get _jsonHeaders => {
+    ..._headers,
+    'Content-Type': 'application/json',
   };
 
   /// Throws [EngineNotConfiguredError] without issuing any request when no
@@ -371,6 +441,67 @@ final class EngineApi {
         statusCode: result.statusCode,
         body: 'invalid JSON: ${result.body}',
       );
+    }
+  }
+
+  /// `POST /events/` — launch a run of [workflowType] with [data].
+  ///
+  /// Body is `{workflow_type, data}` verbatim. Every documented outcome is
+  /// mapped to a [LaunchOutcome] member rather than thrown; see the
+  /// [LaunchOutcome] hierarchy doc comment for why the 422 classes are
+  /// kept distinct.
+  ///
+  /// Throws [EngineNotConfiguredError] with no request issued when no key
+  /// is configured, [FatalAuthError] on `401`, or a
+  /// [SocketException]/[HttpException] on network failure.
+  Future<LaunchOutcome> launchRun({
+    required String workflowType,
+    required Map<String, dynamic> data,
+  }) async {
+    _requireConfigured();
+    final result = await _transport.post(
+      '$_baseUrl/events/',
+      headers: _jsonHeaders,
+      body: jsonEncode({'workflow_type': workflowType, 'data': data}),
+    );
+    if (result.statusCode == 401) {
+      _checkStatus(result.statusCode, result.body);
+    }
+    final json = _decodeObjectOrEmpty(result.body);
+    switch (result.statusCode) {
+      case 202:
+        return LaunchAccepted(
+          runId: (json['run_id'] as String?) ?? '',
+          eventId: (json['event_id'] as String?) ?? '',
+        );
+      case 422:
+        final error = json['error'] as String?;
+        switch (error) {
+          case 'unknown workflow_type':
+            return LaunchUnknownWorkflowType(
+              (json['workflow_type'] as String?) ?? workflowType,
+            );
+          case 'unknown repo':
+            return LaunchUnknownRepo(
+              repo: (json['repo'] as String?) ?? '',
+              message: json['message'] as String?,
+            );
+          case 'unknown spec_slug':
+            return LaunchUnknownSpecSlug(
+              specSlug: (json['spec_slug'] as String?) ?? '',
+              message: json['message'] as String?,
+            );
+          case 'policy resolution failed':
+            return LaunchPolicyFailed(message: json['message'] as String?);
+          case 'unresolvable target root':
+            return LaunchUnresolvableTargetRoot(
+              message: json['message'] as String?,
+            );
+          default:
+            return LaunchUnknownRejection(result.body);
+        }
+      default:
+        throw ApiError(statusCode: result.statusCode, body: result.body);
     }
   }
 
