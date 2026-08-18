@@ -31,17 +31,22 @@
 /// brand primitives only — no new colour tokens.
 library;
 
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/run_dto.dart';
 import '../services/bastion_api.dart';
+import '../services/engine_api.dart';
+import '../state/connection_provider.dart' hide ConnectionState;
 import '../state/runs_provider.dart';
 import '../state/sessions_provider.dart' show bastionApiProvider;
 import '../theme/status_tones.dart';
 import '../theme/tokens.dart';
 import '../theme/typography.dart';
 import '../widgets/brand/brand.dart';
+import '../widgets/confirm_sheet.dart';
 import '../widgets/instrument/instrument.dart';
 
 /// The tone + icon + label a wire `status` string renders with, resolved
@@ -208,8 +213,16 @@ class _RunsScreenState extends ConsumerState<RunsScreen> {
   @override
   Widget build(BuildContext context) {
     final selected = _selectedRunId;
+    final runs = ref.watch(runsProvider);
 
     if (selected != null) {
+      RunSummaryDto? match;
+      for (final run in runs) {
+        if (run.runId == selected) {
+          match = run;
+          break;
+        }
+      }
       return Scaffold(
         appBar: AppBar(
           leading: IconButton(
@@ -223,11 +236,10 @@ class _RunsScreenState extends ConsumerState<RunsScreen> {
           runId: selected,
           api: ref.watch(bastionApiProvider)!,
           now: _now,
+          runStatus: match?.status,
         ),
       );
     }
-
-    final runs = ref.watch(runsProvider);
 
     return Scaffold(
       appBar: AppBar(title: const Text('Runs')),
@@ -413,89 +425,419 @@ class _RunRow extends StatelessWidget {
 
 /// The drill-in body for one run: fetches `GET /api/runs/{id}` and renders
 /// its [NodeTransitionDto]s as a VERTICAL list — never a DAG (out of
-/// scope, unreadable at phone width; see this file's doc comment).
-class _RunDetailBody extends StatefulWidget {
+/// scope, unreadable at phone width; see this file's doc comment) — plus
+/// (`BU.12.D`) a pause/resume/abort control row above the node list.
+class _RunDetailBody extends ConsumerStatefulWidget {
   const _RunDetailBody({
     required this.runId,
     required this.api,
     required this.now,
+    this.runStatus,
   });
 
   final String runId;
   final BastionApi api;
   final DateTime now;
 
+  /// The run's current wire status, sourced from the live `runsProvider`
+  /// list this screen already watches — `null` when the run has already
+  /// scrolled out of that list (e.g. reached via a deep link) or its
+  /// status is not yet known. [_RunControlRow] treats `null` as "not
+  /// knowable client-side" and leaves pause/resume enabled, letting the
+  /// route's own 409 answer rather than inventing client state the server
+  /// owns.
+  final String? runStatus;
+
   @override
-  State<_RunDetailBody> createState() => _RunDetailBodyState();
+  ConsumerState<_RunDetailBody> createState() => _RunDetailBodyState();
 }
 
-class _RunDetailBodyState extends State<_RunDetailBody> {
+class _RunDetailBodyState extends ConsumerState<_RunDetailBody> {
   late Future<RunStateDto> _future;
+
+  /// The engine client for this run's controls, built once the engine key
+  /// + connection config have been read from secure storage. `null` until
+  /// that read resolves.
+  EngineApi? _engine;
+
+  /// Result of the mount probe run against [_engine], or `null` while the
+  /// probe is still in flight.
+  EngineStatus? _engineStatus;
 
   @override
   void initState() {
     super.initState();
     _future = widget.api.getRun(widget.runId);
+    _initEngine();
+  }
+
+  Future<void> _initEngine() async {
+    final config = ref.read(connectionProvider).config;
+    final key = await ref.read(connectionProvider.notifier).readEngineKey();
+    if (!mounted) return;
+    final engine = EngineApi(host: config.host, port: config.port, key: key);
+    final status = await engine.probeMount();
+    if (!mounted) {
+      engine.dispose();
+      return;
+    }
+    setState(() {
+      _engine = engine;
+      _engineStatus = status;
+    });
+  }
+
+  @override
+  void dispose() {
+    _engine?.dispose();
+    super.dispose();
+  }
+
+  /// Re-fetches the run's node-transition snapshot. Passed to
+  /// [_RunControlRow] as the "re-read the run" step after a `202` — a
+  /// control action never mutates local state optimistically, it only
+  /// triggers a fresh read (see `_RunControlRow`'s doc comment).
+  void _reload() {
+    setState(() {
+      _future = widget.api.getRun(widget.runId);
+    });
   }
 
   @override
   Widget build(BuildContext context) {
-    return FutureBuilder<RunStateDto>(
-      future: _future,
-      builder: (context, snapshot) {
-        if (snapshot.connectionState != ConnectionState.done) {
-          return const Center(
-            key: ValueKey('run-detail-loading'),
-            child: CircularProgressIndicator(),
-          );
-        }
-        if (snapshot.hasError) {
-          return Center(
-            child: Padding(
-              padding: const EdgeInsets.all(24),
-              child: Text(
-                key: const ValueKey('run-detail-error'),
-                'Could not load this run: ${snapshot.error}',
-                style: AppTypography.textTheme.bodyMedium?.copyWith(
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+          child: _RunControlRow(
+            runId: widget.runId,
+            engine: _engine,
+            engineStatus: _engineStatus,
+            runStatus: widget.runStatus,
+            onReload: _reload,
+          ),
+        ),
+        Expanded(
+          child: FutureBuilder<RunStateDto>(
+            future: _future,
+            builder: (context, snapshot) {
+              if (snapshot.connectionState != ConnectionState.done) {
+                return const Center(
+                  key: ValueKey('run-detail-loading'),
+                  child: CircularProgressIndicator(),
+                );
+              }
+              if (snapshot.hasError) {
+                return Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: Text(
+                      key: const ValueKey('run-detail-error'),
+                      'Could not load this run: ${snapshot.error}',
+                      style: AppTypography.textTheme.bodyMedium?.copyWith(
+                        color: AppTokens.inkFaint,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+                );
+              }
+
+              final run = snapshot.data!;
+              if (run.nodes.isEmpty) {
+                return Center(
+                  child: Text(
+                    key: const ValueKey('run-detail-no-nodes'),
+                    'No node transitions recorded yet for this run.',
+                    style: AppTypography.textTheme.bodyMedium?.copyWith(
+                      color: AppTokens.inkFaint,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                );
+              }
+
+              return ListView.builder(
+                key: const ValueKey('run-node-list'),
+                padding: const EdgeInsets.all(16),
+                itemCount: run.nodes.length,
+                itemBuilder: (context, index) {
+                  final node = run.nodes[index];
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: _NodeRow(
+                      key: ValueKey('node-row-${node.node}'),
+                      node: node,
+                      now: widget.now,
+                    ),
+                  );
+                },
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Pause / resume / abort control row for one run (`BU.12.D` task 5).
+///
+/// - Disabled — with the reason rendered, never hidden — whenever the
+///   engine is not [EngineStatus.available] (no key configured, engine not
+///   mounted, key rejected, or unreachable). Hiding the row would make a
+///   configuration problem look like a missing feature.
+/// - Abort routes through [showConfirmSheet] naming [runId]; pause and
+///   resume fire immediately.
+/// - A `202` is rendered as its in-flight verb (pausing/resuming/aborting)
+///   and triggers [onReload] — it is never treated as an achieved state.
+///   The run's real status comes from the next read (here, and from the
+///   live `runsProvider` list), never from a local optimistic mutation.
+/// - Every other typed outcome (409/404/422) renders its own
+///   operator-readable message, verbatim from the server where one exists.
+class _RunControlRow extends StatefulWidget {
+  const _RunControlRow({
+    required this.runId,
+    required this.engine,
+    required this.engineStatus,
+    required this.runStatus,
+    required this.onReload,
+  });
+
+  final String runId;
+  final EngineApi? engine;
+  final EngineStatus? engineStatus;
+  final String? runStatus;
+  final VoidCallback onReload;
+
+  @override
+  State<_RunControlRow> createState() => _RunControlRowState();
+}
+
+class _RunControlRowState extends State<_RunControlRow> {
+  bool _busy = false;
+  String? _message;
+  bool _messageIsError = false;
+
+  bool get _engineAvailable =>
+      widget.engine != null && widget.engineStatus == EngineStatus.available;
+
+  /// The visible reason the whole row is disabled, or `null` when the
+  /// engine itself is available (per-action disablement below still
+  /// applies on top of this). Every [EngineStatus] member gets its own
+  /// distinguishable reason string.
+  String? get _engineDisabledReason {
+    switch (widget.engineStatus) {
+      case null:
+        return 'Checking engine status…';
+      case EngineStatus.notConfigured:
+        return 'No engine key configured — set one in Settings.';
+      case EngineStatus.notMounted:
+        return 'Engine not mounted on this server.';
+      case EngineStatus.unauthorized:
+        return 'Engine key was rejected.';
+      case EngineStatus.unreachable:
+        return 'Engine unreachable.';
+      case EngineStatus.available:
+        return null;
+    }
+  }
+
+  /// Pause is meaningless on a run already known to be suspended. When the
+  /// run's status is not knowable client-side ([widget.runStatus] is
+  /// `null`), the action is left enabled and the route's own `409`
+  /// answers instead of this widget inventing server-owned state.
+  bool get _canPause =>
+      _engineAvailable && !_busy && widget.runStatus != 'suspended';
+
+  /// Resume is meaningless on a run that is not suspended. Same
+  /// "unknowable → leave enabled" rule as [_canPause].
+  bool get _canResume =>
+      _engineAvailable &&
+      !_busy &&
+      (widget.runStatus == null || widget.runStatus == 'suspended');
+
+  bool get _canAbort => _engineAvailable && !_busy;
+
+  void _setMessage(String message, {required bool isError}) {
+    if (!mounted) return;
+    setState(() {
+      _message = message;
+      _messageIsError = isError;
+    });
+  }
+
+  /// Maps a thrown error to an operator-readable message. Never includes
+  /// the API key — [ApiError.body] and [FatalAuthError.payload] both
+  /// originate from the SERVER's response, not from anything this client
+  /// sent, so neither can echo the key back (Rule 7).
+  void _handleError(Object error) {
+    if (error is FatalAuthError) {
+      _setMessage('Engine key was rejected.', isError: true);
+    } else if (error is EngineNotConfiguredError) {
+      _setMessage('No engine key configured.', isError: true);
+    } else if (error is ApiError) {
+      _setMessage(
+        'Unexpected response from the engine (status ${error.statusCode}).',
+        isError: true,
+      );
+    } else if (error is SocketException || error is HttpException) {
+      _setMessage('Could not reach the engine.', isError: true);
+    } else {
+      _setMessage('Something went wrong.', isError: true);
+    }
+  }
+
+  Future<void> _run(Future<void> Function() action) async {
+    if (_busy) return;
+    setState(() {
+      _busy = true;
+      _message = null;
+    });
+    try {
+      await action();
+    } finally {
+      if (mounted) {
+        setState(() => _busy = false);
+      }
+    }
+  }
+
+  Future<void> _pause() => _run(() async {
+    try {
+      final outcome = await widget.engine!.pauseRun(widget.runId);
+      switch (outcome) {
+        case PausePausing():
+          _setMessage('Pausing…', isError: false);
+          widget.onReload();
+        case PauseAlreadySuspended(:final error):
+          _setMessage(error, isError: true);
+        case PauseNotFound(:final error):
+          _setMessage(error, isError: true);
+      }
+    } catch (e) {
+      _handleError(e);
+    }
+  });
+
+  Future<void> _resume() => _run(() async {
+    try {
+      final outcome = await widget.engine!.resumeRun(widget.runId);
+      switch (outcome) {
+        case ResumeResuming():
+          _setMessage('Resuming…', isError: false);
+          widget.onReload();
+        case ResumeAlreadyResuming(:final error):
+          _setMessage(error, isError: true);
+        case ResumeNotFound(:final error):
+          _setMessage(error, isError: true);
+        case ResumePolicyFailed(:final error, :final message):
+          _setMessage(message ?? error, isError: true);
+      }
+    } catch (e) {
+      _handleError(e);
+    }
+  });
+
+  Future<void> _abortConfirmed() => _run(() async {
+    try {
+      final outcome = await widget.engine!.abortRun(widget.runId);
+      switch (outcome) {
+        case AbortAborting():
+          _setMessage('Aborting…', isError: false);
+          widget.onReload();
+        case AbortNotFound(:final error):
+          _setMessage(error, isError: true);
+      }
+    } catch (e) {
+      _handleError(e);
+    }
+  });
+
+  Future<void> _abort() async {
+    final confirmed = await showConfirmSheet(
+      context,
+      title: 'Abort run',
+      body: 'This will abort run ${widget.runId}. This cannot be undone.',
+      targetName: widget.runId,
+      destructiveLabel: 'Abort',
+    );
+    if (!confirmed) return;
+    await _abortConfirmed();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final tones = context.statusTones;
+    final disabledReason = _engineDisabledReason;
+
+    return PanelCard(
+      child: Padding(
+        padding: const EdgeInsets.all(13),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Eyebrow(label: 'Controls'),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton(
+                    key: const ValueKey('run-control-pause'),
+                    onPressed: _canPause ? _pause : null,
+                    child: const Text('Pause'),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: OutlinedButton(
+                    key: const ValueKey('run-control-resume'),
+                    onPressed: _canResume ? _resume : null,
+                    child: const Text('Resume'),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: FilledButton(
+                    key: const ValueKey('run-control-abort'),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: tones.danger.foreground,
+                      foregroundColor: AppTokens.paper,
+                    ),
+                    onPressed: _canAbort ? _abort : null,
+                    child: const Text(
+                      'Abort',
+                      style: TextStyle(fontWeight: FontWeight.w800),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            if (disabledReason != null) ...[
+              const SizedBox(height: 8),
+              Text(
+                disabledReason,
+                key: const ValueKey('run-control-disabled-reason'),
+                style: AppTypography.textTheme.bodySmall?.copyWith(
                   color: AppTokens.inkFaint,
                 ),
-                textAlign: TextAlign.center,
               ),
-            ),
-          );
-        }
-
-        final run = snapshot.data!;
-        if (run.nodes.isEmpty) {
-          return Center(
-            child: Text(
-              key: const ValueKey('run-detail-no-nodes'),
-              'No node transitions recorded yet for this run.',
-              style: AppTypography.textTheme.bodyMedium?.copyWith(
-                color: AppTokens.inkFaint,
+            ],
+            if (_message != null) ...[
+              const SizedBox(height: 8),
+              Text(
+                _message!,
+                key: const ValueKey('run-control-message'),
+                style: AppTypography.textTheme.bodySmall?.copyWith(
+                  color: _messageIsError
+                      ? tones.danger.foreground
+                      : AppTokens.inkFaint,
+                ),
               ),
-              textAlign: TextAlign.center,
-            ),
-          );
-        }
-
-        return ListView.builder(
-          key: const ValueKey('run-node-list'),
-          padding: const EdgeInsets.all(16),
-          itemCount: run.nodes.length,
-          itemBuilder: (context, index) {
-            final node = run.nodes[index];
-            return Padding(
-              padding: const EdgeInsets.only(bottom: 8),
-              child: _NodeRow(
-                key: ValueKey('node-row-${node.node}'),
-                node: node,
-                now: widget.now,
-              ),
-            );
-          },
-        );
-      },
+            ],
+          ],
+        ),
+      ),
     );
   }
 }
