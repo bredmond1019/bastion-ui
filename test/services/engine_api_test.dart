@@ -1,5 +1,6 @@
 // ignore_for_file: avoid_relative_lib_imports
 
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -653,6 +654,286 @@ void main() {
       );
       expect(t.calls, isEmpty);
     });
+  });
+
+  group('EngineApi.launchRun', () {
+    test('hits POST /events/ with no /api prefix, JSON content-type, and the '
+        'exact {workflow_type, data} body shape', () async {
+      final t = FakeHttpTransport();
+      t.on(
+        'POST',
+        '/events/',
+        status: 202,
+        body: {'run_id': 'run-1', 'event_id': 'evt-1'},
+      );
+      final engine = makeEngine(t);
+
+      await engine.launchRun(
+        workflowType: 'SDLC_FLOW',
+        data: {'repo': 'bastion-ui', 'spec_slug': 'BU.12.E'},
+      );
+
+      final call = t.calls.single;
+      expect(call.method, 'POST');
+      expect(call.url, 'http://127.0.0.1:4317/events/');
+      expect(call.url.contains('/api'), isFalse);
+      expect(call.headers['X-API-Key'], _sentinelKey);
+      expect(call.headers['Content-Type'], 'application/json');
+      expect(jsonDecode(call.body!), {
+        'workflow_type': 'SDLC_FLOW',
+        'data': {'repo': 'bastion-ui', 'spec_slug': 'BU.12.E'},
+      });
+    });
+
+    test('202 maps to LaunchAccepted carrying run_id and event_id', () async {
+      final t = FakeHttpTransport();
+      t.on(
+        'POST',
+        '/events/',
+        status: 202,
+        body: {'run_id': 'run-1', 'event_id': 'evt-1'},
+      );
+      final engine = makeEngine(t);
+
+      final outcome = await engine.launchRun(
+        workflowType: 'SDLC_FLOW',
+        data: {},
+      );
+
+      expect(outcome, isA<LaunchAccepted>());
+      expect((outcome as LaunchAccepted).runId, 'run-1');
+      expect(outcome.eventId, 'evt-1');
+    });
+
+    test('401 surfaces as FatalAuthError', () async {
+      final t = FakeHttpTransport();
+      t.on(
+        'POST',
+        '/events/',
+        status: 401,
+        body: {'error': 'unauthorized', 'code': 'unauthorized'},
+      );
+      final engine = makeEngine(t);
+
+      await expectLater(
+        engine.launchRun(workflowType: 'SDLC_FLOW', data: const {}),
+        throwsA(isA<FatalAuthError>()),
+      );
+    });
+
+    test('422 unknown workflow_type maps to LaunchUnknownWorkflowType naming '
+        'it', () async {
+      final t = FakeHttpTransport();
+      t.on(
+        'POST',
+        '/events/',
+        status: 422,
+        body: {'error': 'unknown workflow_type', 'workflow_type': 'BOGUS'},
+      );
+      final engine = makeEngine(t);
+
+      final outcome = await engine.launchRun(
+        workflowType: 'BOGUS',
+        data: const {},
+      );
+
+      expect(outcome, isA<LaunchUnknownWorkflowType>());
+      expect((outcome as LaunchUnknownWorkflowType).workflowType, 'BOGUS');
+    });
+
+    test(
+      '422 unknown repo maps to LaunchUnknownRepo carrying repo and message',
+      () async {
+        final t = FakeHttpTransport();
+        t.on(
+          'POST',
+          '/events/',
+          status: 422,
+          body: {
+            'error': 'unknown repo',
+            'repo': 'no-such-repo',
+            'message': 'no repo named no-such-repo is registered',
+          },
+        );
+        final engine = makeEngine(t);
+
+        final outcome = await engine.launchRun(
+          workflowType: 'SDLC_FLOW',
+          data: {'repo': 'no-such-repo'},
+        );
+
+        expect(outcome, isA<LaunchUnknownRepo>());
+        final unknownRepo = outcome as LaunchUnknownRepo;
+        expect(unknownRepo.repo, 'no-such-repo');
+        expect(unknownRepo.message, 'no repo named no-such-repo is registered');
+      },
+    );
+
+    test('422 unknown spec_slug maps to LaunchUnknownSpecSlug carrying the '
+        'slug and message', () async {
+      final t = FakeHttpTransport();
+      t.on(
+        'POST',
+        '/events/',
+        status: 422,
+        body: {
+          'error': 'unknown spec_slug',
+          'spec_slug': 'NO.SUCH.SLUG',
+          'message': 'no spec named NO.SUCH.SLUG exists',
+        },
+      );
+      final engine = makeEngine(t);
+
+      final outcome = await engine.launchRun(
+        workflowType: 'SDLC_FLOW',
+        data: {'spec_slug': 'NO.SUCH.SLUG'},
+      );
+
+      expect(outcome, isA<LaunchUnknownSpecSlug>());
+      final unknownSlug = outcome as LaunchUnknownSpecSlug;
+      expect(unknownSlug.specSlug, 'NO.SUCH.SLUG');
+      expect(unknownSlug.message, 'no spec named NO.SUCH.SLUG exists');
+    });
+
+    test('422 policy resolution failed maps to LaunchPolicyFailed carrying '
+        'the message', () async {
+      final t = FakeHttpTransport();
+      t.on(
+        'POST',
+        '/events/',
+        status: 422,
+        body: {
+          'error': 'policy resolution failed',
+          'message': 'no policy resolves for this workflow_type',
+        },
+      );
+      final engine = makeEngine(t);
+
+      final outcome = await engine.launchRun(
+        workflowType: 'SDLC_FLOW',
+        data: const {},
+      );
+
+      expect(outcome, isA<LaunchPolicyFailed>());
+      expect(
+        (outcome as LaunchPolicyFailed).message,
+        'no policy resolves for this workflow_type',
+      );
+    });
+
+    test('422 unresolvable target root maps to LaunchUnresolvableTargetRoot '
+        'carrying the message', () async {
+      final t = FakeHttpTransport();
+      t.on(
+        'POST',
+        '/events/',
+        status: 422,
+        body: {
+          'error': 'unresolvable target root',
+          'message': 'no target root could be resolved',
+        },
+      );
+      final engine = makeEngine(t);
+
+      final outcome = await engine.launchRun(
+        workflowType: 'SDLC_FLOW',
+        data: const {},
+      );
+
+      expect(outcome, isA<LaunchUnresolvableTargetRoot>());
+      expect(
+        (outcome as LaunchUnresolvableTargetRoot).message,
+        'no target root could be resolved',
+      );
+    });
+
+    test(
+      'an unrecognised 422 error string falls back to LaunchUnknownRejection '
+      'carrying the raw body',
+      () async {
+        final t = FakeHttpTransport();
+        t.on(
+          'POST',
+          '/events/',
+          status: 422,
+          body: {
+            'error': 'some future rejection class the client does not know',
+            'detail': 'added upstream after this client was written',
+          },
+        );
+        final engine = makeEngine(t);
+
+        final outcome = await engine.launchRun(
+          workflowType: 'SDLC_FLOW',
+          data: const {},
+        );
+
+        expect(outcome, isA<LaunchUnknownRejection>());
+        final rejection = outcome as LaunchUnknownRejection;
+        expect(
+          rejection.rawBody,
+          contains('some future rejection class the client does not know'),
+        );
+        expect(
+          rejection.rawBody,
+          contains('added upstream after this client was written'),
+        );
+      },
+    );
+
+    test('a not-configured client issues zero requests', () async {
+      final t = FakeHttpTransport();
+      final engine = makeEngine(t, key: null);
+
+      await expectLater(
+        engine.launchRun(workflowType: 'SDLC_FLOW', data: const {}),
+        throwsA(isA<EngineNotConfiguredError>()),
+      );
+      expect(t.calls, isEmpty);
+    });
+
+    test(
+      'the sentinel key appears nowhere in a launch 401 toString()',
+      () async {
+        final t = FakeHttpTransport();
+        t.on(
+          'POST',
+          '/events/',
+          status: 401,
+          body: {'error': 'unauthorized', 'code': 'unauthorized'},
+        );
+        final engine = makeEngine(t);
+
+        Object? caught;
+        try {
+          await engine.launchRun(workflowType: 'SDLC_FLOW', data: const {});
+        } catch (e) {
+          caught = e;
+        }
+
+        expect(caught, isNotNull);
+        expect(caught.toString().contains(_sentinelKey), isFalse);
+      },
+    );
+
+    test(
+      'the sentinel key appears nowhere in a launch 500 toString()',
+      () async {
+        final t = FakeHttpTransport();
+        t.on('POST', '/events/', status: 500, body: 'internal error');
+        final engine = makeEngine(t);
+
+        Object? caught;
+        try {
+          await engine.launchRun(workflowType: 'SDLC_FLOW', data: const {});
+        } catch (e) {
+          caught = e;
+        }
+
+        expect(caught, isNotNull);
+        expect(caught.toString().contains(_sentinelKey), isFalse);
+      },
+    );
   });
 
   group('leak assertion — control routes (Standing Rule 7)', () {
