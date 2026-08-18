@@ -9,6 +9,45 @@ timestamp: "2026-08-16T02:15:00Z"
 
 *Append-only working log. One dated entry per session. Newest entries at the top.*
 
+## [run: 2026-08-18]
+
+Closed `BU.12.E` (Simplified workflow launch) via `/sdlc-flow` — 8 of 8 tasks passed, PASS
+review. `EngineApi.launchRun` (task 1) POSTs `/events/` and maps the 202 accepted response plus
+all five documented 422 classes (unknown workflow_type/repo/spec_slug, policy resolution failed,
+unresolvable target root) to a typed `LaunchOutcome` sealed hierarchy, with an unrecognised-422
+fallback carrying the raw body; task 2 covered it fully against `FakeHttpTransport`. Task 3 added
+`engineWorkflowsProvider`, a riverpod notifier that probes `GET /workflows` and exposes a sealed
+`EngineWorkflowsState` distinguishing not-configured/not-mounted/unauthorized/unreachable from a
+genuinely-empty registry. Task 4 built `LaunchSheet` — repo + live-registry workflow type + spec
+slug, one primary Launch action, server-side 422s rendered per-field or as a sheet banner. Task 5
+wired a launch entry point into the runs-list header, disabled with a visible (never hidden)
+reason per `EngineStatus` cause, reusing the run-detail control row's pattern; the runs list is
+already WS-live so no manual refetch was needed after a successful launch. Task 6 fixed a
+`dart format` gate failure on `runs_screen.dart` (mechanical, no logic change) and drove
+`LaunchSheet` through its real `showLaunchSheet()` route so a 202 has an actual route to pop.
+Task 7's e2e was verified live against a real engine-mounted `bastion serve`: the 202 path stays
+proven only at the unit level (spawning `SDLC_FLOW` or leaving an unmanaged `TERMINAL_PROBE` tmux
+session is out of scope for an automated e2e), and the unknown-repo 422 was found to surface as
+`policy resolution failed` (naming the slug) rather than the originally-assumed `unknown repo`,
+since `register_sdlc_flow_with_registry`'s factory resolves the repo inside
+`Dispatcher::dispatch_with_event` before `post_events`'s dedicated unknown-repo pre-flight ever
+runs — the test and the block record document the real behavior; `LaunchUnknownRepo` itself
+remains proven at the unit level. Task 8 (Validate) ran the full gating suite clean — `dart
+format`, `flutter analyze`, `flutter test --exclude-tags e2e` (924 tests) — with no further
+changes needed. Phase 12 (engine control) still has `BU.12.B`/`BU.12.C` open. Next: `BU.12.B`
+(runs list + run detail) or `BU.12.C` (live `runs` WebSocket topic).
+
+```
+9a6ae79 docs: update docs for BU.12.E
+b6ff2fd feat: implement BU.12.E-task7
+9548515 fix: fix pass 1 for BU.12.E-task6
+d9dd63d feat: implement BU.12.E-task6
+dcd8b8c feat: implement BU.12.E-task5
+a6478ea feat: implement BU.12.E-task4
+d7d41e5 feat: implement BU.12.E-task3
+d39f051 feat: implement BU.12.E-task2
+```
+
 ## [run: 2026-08-16]
 
 Closed `BU.ticket.e2e-fixed-timeouts` via `/sdlc-flow` (tasks 1–3, all passed, PASS review). The e2e
