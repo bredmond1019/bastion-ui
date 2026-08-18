@@ -258,10 +258,19 @@ const Map<String, dynamic> boardBlockFullFixture = {
   ],
   'epics': ['bastion-surfaces'],
   'wave': 3,
+  'priority': 1,
+  'due': '2026-07-15',
+  'track': 'Phase 11',
   'dependent_count': 2,
   'ready': true,
   'unmet_count': 0,
   'last_touched': '2026-08-10T12:00:00Z',
+  'effective_priority': 1,
+  'description': 'Cross-brain board read endpoint, full description.',
+  'created': '2026-06-01',
+  'closed': '2026-08-05',
+  'commit': 'abc123def',
+  'origin': {'kind': 'carryover', 'slug': 'BU.carryover.board-drift'},
 };
 
 /// Minimal `BoardBlockDto` — every optional field, including `blocked_by`,
@@ -310,6 +319,63 @@ const Map<String, dynamic> boardEmptyFixture = {
   'lanes': boardLaneEmptyFixture,
   'repos': <dynamic>[],
   'stale': false,
+};
+
+// ---------------------------------------------------------------------------
+// GET /api/lanes — serve-api.md §28.2 (LanesDto, v0.35, BA.19.C)
+// ---------------------------------------------------------------------------
+
+/// A single `LaneSegmentDto` in `startable` state — every field populated.
+const Map<String, dynamic> laneSegmentStartableFixture = {
+  'roadmap': 'engine-orchestration',
+  'lane': 'derive',
+  'segment': 0,
+  'repo': 'mev',
+  'head': 'mev:MV.13.C',
+  'availability': 'startable',
+  'leverage_lanes_freed': 2,
+};
+
+/// A `done` `LaneSegmentDto` — `head`/`reason` absent, matching the
+/// contract's "absent, not null" rule for a segment with no frontier entry.
+const Map<String, dynamic> laneSegmentDoneFixture = {
+  'roadmap': 'engine-orchestration',
+  'lane': 'derive',
+  'segment': 1,
+  'repo': 'mev',
+  'availability': 'done',
+  'leverage_lanes_freed': 0,
+};
+
+/// A `held-block` `LaneSegmentDto` — `reason` populated.
+const Map<String, dynamic> laneSegmentHeldFixture = {
+  'roadmap': 'engine-orchestration',
+  'lane': 'transform',
+  'segment': 0,
+  'repo': 'engine-rs',
+  'head': 'engine-rs:EN.4.A',
+  'availability': 'held-block',
+  'reason': 'waiting on mev:MV.13.C',
+  'leverage_lanes_freed': 0,
+};
+
+/// `GET /api/lanes` response — fleet-wide, no `?epic=` filter.
+const Map<String, dynamic> lanesFixture = {
+  'derived_at': '2026-08-18T10:00:00-07:00',
+  'degraded': false,
+  'segments': [
+    laneSegmentStartableFixture,
+    laneSegmentDoneFixture,
+    laneSegmentHeldFixture,
+  ],
+};
+
+/// `GET /api/lanes?epic=<slug>` response with a known-but-unmatched slug —
+/// an empty `segments` array is a real answer, not an error.
+const Map<String, dynamic> lanesEmptyFixture = {
+  'derived_at': '2026-08-18T10:00:00-07:00',
+  'degraded': false,
+  'segments': <dynamic>[],
 };
 
 // ---------------------------------------------------------------------------

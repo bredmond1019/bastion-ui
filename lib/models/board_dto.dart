@@ -1,6 +1,7 @@
-/// Board DTOs mirroring `../bastion/types/serve.ts` (serve-api v0.30/v0.31
-/// §13) for `GET /api/board?scope=hq|tier|project|business` (optionally
-/// `&tier=<name>&graph=1`).
+/// Board DTOs mirroring `../bastion/types/serve.ts` (serve-api v0.35 §13,
+/// through the v0.33 block-detail fields and v0.34 `effective_priority`) for
+/// `GET /api/board?scope=hq|tier|project|business|epic` (optionally
+/// `&tier=<name>&epic=<slug>&graph=1`).
 ///
 /// This file is pure Dart — no Flutter or socket imports.
 library;
@@ -127,6 +128,28 @@ final class UnknownBlockedByDto extends BlockedByDto {
 }
 
 // ---------------------------------------------------------------------------
+// BlockOriginDto — mirrors okf_core::state::Origin (v0.33)
+// ---------------------------------------------------------------------------
+
+/// Backlog/carryover promotion provenance for a `BoardBlockDto` — mirrors
+/// `BlockOriginDto` in `types/serve.ts` (serve-api v0.33). `kind` is
+/// `"backlog"` or `"carryover"`; `"carryover"` marks a block filed to
+/// resolve a `carryover[]` entry, letting a Surface link back to it.
+final class BlockOriginDto {
+  final String kind;
+  final String slug;
+
+  const BlockOriginDto({required this.kind, required this.slug});
+
+  factory BlockOriginDto.fromJson(Map<String, dynamic> json) {
+    return BlockOriginDto(
+      kind: json['kind'] as String? ?? '',
+      slug: json['slug'] as String? ?? '',
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
 // BoardBlockDto
 // ---------------------------------------------------------------------------
 
@@ -146,6 +169,18 @@ final class BoardBlockDto {
   final List<BlockedByDto> blockedBy;
   final List<String> epics;
   final int? wave;
+
+  /// Execution priority (e.g. `1`, `2`, `3`) — v0.11, from the authoring
+  /// `TrackBlock.priority`.
+  final int? priority;
+
+  /// Target due date or timing string (e.g. `"2026-07-15"`) — v0.11, from
+  /// the authoring `TrackBlock.due`.
+  final String? due;
+
+  /// Title of the enclosing `tracks[]` phase/wave entry — v0.11
+  /// (`okf_core::Track.title`).
+  final String? track;
 
   /// Corpus-wide count of blocks whose `blocked_by` edges point at this
   /// block. **`null` unless the request passed `?graph=1`** — the field is
@@ -186,6 +221,32 @@ final class BoardBlockDto {
   /// `0` (`BU.ticket.dashboard-now-render`).
   final DateTime? lastTouched;
 
+  /// Min-propagated ranking priority — v0.34, carried verbatim from
+  /// `BlockGraphNode::effective_priority`. `null` unless `?graph=1` was
+  /// requested and mev landed a value; never falls back to [priority] —
+  /// that fallback, when a client wants one, belongs to the consumer, not
+  /// this DTO.
+  final int? effectivePriority;
+
+  /// Longer human-facing description — v0.33, from the authoring
+  /// `TrackBlock.description`. `null` when unauthored.
+  final String? description;
+
+  /// Authoring date (`YYYY-MM-DD`) — v0.33, from `TrackBlock.created`.
+  final String? created;
+
+  /// Status-transition date to `closed` (`YYYY-MM-DD`) — v0.33, from
+  /// `TrackBlock.closed`. Paired with [commit].
+  final String? closedDate;
+
+  /// Git hash of the commit that closed this block — v0.33, from
+  /// `TrackBlock.commit`.
+  final String? commit;
+
+  /// Backlog/carryover promotion provenance — v0.33, from
+  /// `TrackBlock.origin`.
+  final BlockOriginDto? origin;
+
   const BoardBlockDto({
     required this.id,
     required this.title,
@@ -194,16 +255,26 @@ final class BoardBlockDto {
     this.blockedBy = const [],
     this.epics = const [],
     this.wave,
+    this.priority,
+    this.due,
+    this.track,
     this.dependentCount,
     this.ready,
     this.unmetCount,
     this.lastTouched,
+    this.effectivePriority,
+    this.description,
+    this.created,
+    this.closedDate,
+    this.commit,
+    this.origin,
   });
 
   factory BoardBlockDto.fromJson(Map<String, dynamic> json) {
     final rawBlockedBy = json['blocked_by'];
     final rawEpics = json['epics'];
     final rawLastTouched = json['last_touched'];
+    final rawOrigin = json['origin'];
     return BoardBlockDto(
       id: json['id'] as String? ?? '',
       title: json['title'] as String? ?? '',
@@ -219,11 +290,22 @@ final class BoardBlockDto {
           ? rawEpics.whereType<String>().toList()
           : const [],
       wave: (json['wave'] as num?)?.toInt(),
+      priority: (json['priority'] as num?)?.toInt(),
+      due: json['due'] as String?,
+      track: json['track'] as String?,
       dependentCount: (json['dependent_count'] as num?)?.toInt(),
       ready: json['ready'] as bool?,
       unmetCount: (json['unmet_count'] as num?)?.toInt(),
       lastTouched: rawLastTouched is String
           ? DateTime.tryParse(rawLastTouched)
+          : null,
+      effectivePriority: (json['effective_priority'] as num?)?.toInt(),
+      description: json['description'] as String?,
+      created: json['created'] as String?,
+      closedDate: json['closed'] as String?,
+      commit: json['commit'] as String?,
+      origin: rawOrigin is Map<String, dynamic>
+          ? BlockOriginDto.fromJson(rawOrigin)
           : null,
     );
   }

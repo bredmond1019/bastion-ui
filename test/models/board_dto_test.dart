@@ -58,6 +58,38 @@ void main() {
       expect(withoutTouch.lastTouched, isNull);
     });
 
+    test('v0.11/v0.33/v0.34 fields decode from the full fixture', () {
+      final block = BoardBlockDto.fromJson(boardBlockFullFixture);
+
+      expect(block.priority, 1);
+      expect(block.due, '2026-07-15');
+      expect(block.track, 'Phase 11');
+      expect(block.effectivePriority, 1);
+      expect(
+        block.description,
+        'Cross-brain board read endpoint, full description.',
+      );
+      expect(block.created, '2026-06-01');
+      expect(block.closedDate, '2026-08-05');
+      expect(block.commit, 'abc123def');
+      expect(block.origin?.kind, 'carryover');
+      expect(block.origin?.slug, 'BU.carryover.board-drift');
+    });
+
+    test('v0.11/v0.33/v0.34 fields absent from the minimal fixture', () {
+      final block = BoardBlockDto.fromJson(boardBlockMinimalFixture);
+
+      expect(block.priority, isNull);
+      expect(block.due, isNull);
+      expect(block.track, isNull);
+      expect(block.effectivePriority, isNull);
+      expect(block.description, isNull);
+      expect(block.created, isNull);
+      expect(block.closedDate, isNull);
+      expect(block.commit, isNull);
+      expect(block.origin, isNull);
+    });
+
     test('same payload without ?graph=1: all three graph fields null, '
         'distinguishable from zero/false', () {
       final block = BoardBlockDto.fromJson({

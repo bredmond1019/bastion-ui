@@ -504,6 +504,51 @@ void main() {
     });
   });
 
+  group('getLanes', () {
+    test('no params — no query string emitted, decodes all segments', () async {
+      final t = FakeHttpTransport()
+        ..on('GET', '/api/lanes', status: 200, body: lanesFixture);
+      final api = _makeApi(t);
+
+      final lanes = await api.getLanes();
+
+      expect(lanes.derivedAt, '2026-08-18T10:00:00-07:00');
+      expect(lanes.degraded, isFalse);
+      expect(lanes.segments, hasLength(3));
+      final startable = lanes.segments[0];
+      expect(startable.roadmap, 'engine-orchestration');
+      expect(startable.head, 'mev:MV.13.C');
+      expect(startable.availability, 'startable');
+      final done = lanes.segments[1];
+      expect(done.head, isNull);
+      expect(done.reason, isNull);
+      final call = t.lastCallTo('GET', '/api/lanes')!;
+      expect(call.queryParameters, isEmpty);
+      _expectBearer(call);
+    });
+
+    test('epic param emitted when supplied', () async {
+      final t = FakeHttpTransport()
+        ..on('GET', '/api/lanes', status: 200, body: lanesFixture);
+      final api = _makeApi(t);
+
+      await api.getLanes(epic: 'engine-orchestration');
+
+      final call = t.lastCallTo('GET', '/api/lanes')!;
+      expect(call.queryParameters, {'epic': 'engine-orchestration'});
+    });
+
+    test('known-but-unmatched epic decodes with empty segments', () async {
+      final t = FakeHttpTransport()
+        ..on('GET', '/api/lanes', status: 200, body: lanesEmptyFixture);
+      final api = _makeApi(t);
+
+      final lanes = await api.getLanes(epic: 'no-such-epic');
+
+      expect(lanes.segments, isEmpty);
+    });
+  });
+
   group('getAttention', () {
     test('no params — decoded lanes + thresholds', () async {
       final t = FakeHttpTransport()
