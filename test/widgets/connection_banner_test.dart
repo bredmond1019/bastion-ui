@@ -54,6 +54,12 @@ class _FakeConnectionNotifier extends StateNotifier<ConnectionState>
   Future<String?> readToken() async => null;
 
   @override
+  Future<String?> readEngineKey() async => null;
+
+  @override
+  Future<void> saveEngineKey(String? key) async {}
+
+  @override
   void updateStatus(ConnectionStatus status) {
     state = state.copyWith(status: status);
   }

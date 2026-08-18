@@ -96,20 +96,42 @@ bool bastionE2eRequireBinary([Map<String, String>? environment]) {
 /// invocations behaving the same way an interactive shell's would.
 const List<String> bastionServeHarnessForwardedEnvKeys = ['LANG', 'LC_ALL'];
 
+/// Env var keys that, together, let the spawned `bastion serve` child mount
+/// the Section 18 engine routes (§18.1: both must be set or neither
+/// mounts). Forwarded from the parent environment ONLY when
+/// [bastionServeHarnessChildEnvironment]'s `forwardEngineEnv` (or
+/// [BastionServeHarness.start]'s `engineMount`) is explicitly `true` — never
+/// by default, and never with a hardcoded/fixture value. See that
+/// function's doc for why the default must stay DB-free.
+const List<String> bastionServeHarnessEngineEnvKeys = [
+  'DATABASE_URL',
+  'BASTION_ENGINE_API_KEY',
+];
+
 /// Builds the explicit environment map [BastionServeHarness.start] spawns
 /// `bastion serve` with, given the (real or test-double) parent
 /// [parentEnvironment] (defaults to [Platform.environment]).
 ///
 /// Deliberately NOT the full inherited environment — `DATABASE_URL` and any
-/// engine-api-key vars are always left unset so the server stays DB-free
-/// per `bastion/src/serve/mod.rs`'s absent-tolerance. Only `PATH` (required
-/// to locate the `tmux` binary at all) and the locale vars in
+/// engine-api-key vars are left unset by default so the server stays
+/// DB-free per `bastion/src/serve/mod.rs`'s absent-tolerance. Only `PATH`
+/// (required to locate the `tmux` binary at all) and the locale vars in
 /// [bastionServeHarnessForwardedEnvKeys] (required for `tmux` to format its
 /// `-F` output correctly, see that constant's doc) are forwarded, and only
 /// when actually present (and non-empty for the locale vars) in
 /// [parentEnvironment].
+///
+/// Pass [forwardEngineEnv]: `true` to opt into forwarding
+/// [bastionServeHarnessEngineEnvKeys] (`DATABASE_URL` +
+/// `BASTION_ENGINE_API_KEY`) from [parentEnvironment] when present and
+/// non-empty there — this is the ONLY way those vars ever reach the child;
+/// the value always comes from the parent process environment, never a
+/// literal or fixture default. **The default (`false`) is unchanged from
+/// before this parameter existed** — every existing call site and the
+/// pinned 'never forwards' test keep passing untouched.
 Map<String, String> bastionServeHarnessChildEnvironment([
   Map<String, String>? parentEnvironment,
+  bool forwardEngineEnv = false,
 ]) {
   final parent = parentEnvironment ?? Platform.environment;
   final env = <String, String>{'PATH': parent['PATH'] ?? ''};
@@ -119,7 +141,36 @@ Map<String, String> bastionServeHarnessChildEnvironment([
       env[key] = value;
     }
   }
+  if (forwardEngineEnv) {
+    for (final key in bastionServeHarnessEngineEnvKeys) {
+      final value = parent[key];
+      if (value != null && value.isNotEmpty) {
+        env[key] = value;
+      }
+    }
+  }
   return env;
+}
+
+/// Reports whether an engine-mounted `bastion serve` is obtainable in the
+/// current environment: both [bastionServeHarnessEngineEnvKeys] are present
+/// and non-empty in [parentEnvironment] (defaults to [Platform.environment])
+/// AND a `bastion` binary can be located ([BastionServeHarness.locateBinary]).
+///
+/// Engine e2e tests should call this to self-skip cleanly — the same way
+/// every other e2e test in this suite self-skips when
+/// [BastionServeHarness.locateBinary] returns `null` — rather than failing
+/// when the operator hasn't exported an engine API key locally or in CI.
+bool bastionServeHarnessEngineMountAvailable([
+  Map<String, String>? parentEnvironment,
+]) {
+  final parent = parentEnvironment ?? Platform.environment;
+  final hasEngineEnv = bastionServeHarnessEngineEnvKeys.every((key) {
+    final value = parent[key];
+    return value != null && value.isNotEmpty;
+  });
+  if (!hasEngineEnv) return false;
+  return BastionServeHarness.locateBinary() != null;
 }
 
 /// A running `bastion serve` subprocess ready to be driven by real clients.
@@ -287,9 +338,19 @@ final class BastionServeHarness {
   /// fixture `[workspaces]` registry instead of the user's real
   /// `~/.config/bastion/config.toml`. When `false` (the default), the spawn
   /// env is unchanged from before this seam existed.
+  ///
+  /// When [engineMount] is `true` (default `false`), forwards
+  /// `DATABASE_URL` + `BASTION_ENGINE_API_KEY` from the parent process
+  /// environment (see [bastionServeHarnessChildEnvironment]'s
+  /// `forwardEngineEnv`), so the spawned server mounts the Section 18
+  /// engine routes per §18.1. Prefer
+  /// [bastionServeHarnessEngineMountAvailable] to self-skip a test cleanly
+  /// when the parent environment or binary makes this unobtainable, rather
+  /// than passing `engineMount: true` and letting `/health` time out.
   static Future<BastionServeHarness?> start({
     Duration readyTimeout = kDefaultServeReadyTimeout,
     bool workspaceFixture = false,
+    bool engineMount = false,
   }) async {
     final binaryPath = locateBinary();
     if (binaryPath == null) {
@@ -297,7 +358,7 @@ final class BastionServeHarness {
     }
 
     Directory? fixtureDir;
-    final env = bastionServeHarnessChildEnvironment();
+    final env = bastionServeHarnessChildEnvironment(null, engineMount);
     if (workspaceFixture) {
       fixtureDir = await provisionWorkspaceFixture();
       env['XDG_CONFIG_HOME'] = fixtureDir.path;

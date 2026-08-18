@@ -42,6 +42,19 @@ class _FakeSecureStorage extends Fake implements FlutterSecureStorage {
   }
 
   @override
+  Future<void> delete({
+    required String key,
+    IOSOptions? iOptions,
+    AndroidOptions? aOptions,
+    LinuxOptions? lOptions,
+    WebOptions? webOptions,
+    MacOsOptions? mOptions,
+    WindowsOptions? wOptions,
+  }) async {
+    _store.remove(key);
+  }
+
+  @override
   Future<bool> containsKey({
     required String key,
     IOSOptions? iOptions,
@@ -239,6 +252,96 @@ void main() {
         notifier.updateStatus(status);
         expect(container.read(connectionProvider).status, status);
       }
+    });
+
+    // ---- Engine key (BU.12.A task 1) --------------------------------------
+
+    test('readEngineKey returns null when not yet configured', () async {
+      final container = _makeContainer();
+      addTearDown(container.dispose);
+      container.read(connectionProvider);
+
+      final key = await container
+          .read(connectionProvider.notifier)
+          .readEngineKey();
+      expect(key, isNull);
+    });
+
+    test(
+      'saveEngineKey/readEngineKey round-trip through secure storage',
+      () async {
+        final storage = _FakeSecureStorage();
+        final container = _makeContainer(storage);
+        addTearDown(container.dispose);
+        container.read(connectionProvider);
+        await Future<void>.delayed(Duration.zero);
+
+        final notifier = container.read(connectionProvider.notifier);
+        await notifier.saveEngineKey('sentinel-engine-key-123');
+
+        expect(await notifier.readEngineKey(), 'sentinel-engine-key-123');
+        expect(
+          storage._store['bastion.auth.engine_key'],
+          'sentinel-engine-key-123',
+        );
+      },
+    );
+
+    test(
+      'saveEngineKey(null) deletes the entry rather than persisting it',
+      () async {
+        final storage = _FakeSecureStorage();
+        final container = _makeContainer(storage);
+        addTearDown(container.dispose);
+        final notifier = container.read(connectionProvider.notifier);
+
+        await notifier.saveEngineKey('some-key');
+        expect(await notifier.readEngineKey(), 'some-key');
+
+        await notifier.saveEngineKey(null);
+        expect(await notifier.readEngineKey(), isNull);
+        expect(storage._store.containsKey('bastion.auth.engine_key'), isFalse);
+      },
+    );
+
+    test(
+      "saveEngineKey('') deletes the entry rather than persisting an empty value",
+      () async {
+        final storage = _FakeSecureStorage();
+        final container = _makeContainer(storage);
+        addTearDown(container.dispose);
+        final notifier = container.read(connectionProvider.notifier);
+
+        await notifier.saveEngineKey('some-key');
+        expect(await notifier.readEngineKey(), 'some-key');
+
+        await notifier.saveEngineKey('');
+        expect(await notifier.readEngineKey(), isNull);
+        expect(storage._store.containsKey('bastion.auth.engine_key'), isFalse);
+      },
+    );
+
+    test('ConnectionConfig.toString() never contains the engine key', () async {
+      const cfg = ConnectionConfig(host: 'h', port: 4317);
+      expect(cfg.toString(), isNot(contains('sentinel-engine-key-123')));
+      expect(cfg.toString(), isNot(contains('engine_key')));
+      expect(cfg.toString(), isNot(contains('engineKey')));
+    });
+
+    test('ConnectionState.toString() never contains the engine key', () async {
+      final storage = _FakeSecureStorage();
+      final container = _makeContainer(storage);
+      addTearDown(container.dispose);
+      final notifier = container.read(connectionProvider.notifier);
+      await Future<void>.delayed(Duration.zero);
+
+      await notifier.saveEngineKey('sentinel-engine-key-123');
+      await notifier.saveConfig(host: 'h', port: 4317, token: 't');
+
+      final state = container.read(connectionProvider);
+      expect(state.toString(), isNot(contains('sentinel-engine-key-123')));
+      expect(state.toString(), isNot(contains('engine_key')));
+      expect(state.toString(), isNot(contains('engineKey')));
     });
   });
 }

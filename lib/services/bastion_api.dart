@@ -17,6 +17,7 @@ import '../models/attention_dto.dart';
 import '../models/board_dto.dart';
 import '../models/docs_dto.dart';
 import '../models/dto.dart';
+import '../models/lanes_dto.dart';
 import '../models/repo_status_dto.dart';
 import '../models/run_dto.dart';
 import '../models/session_dto.dart';
@@ -466,10 +467,11 @@ final class BastionApi {
   }
 
   // -------------------------------------------------------------------------
-  // Board / Attention / Docs read surfaces (v0.30) — serve-api.md §13, §15, §16
+  // Board / Attention / Docs / Lanes read surfaces (v0.30, extended v0.35) —
+  // serve-api.md §13, §15, §16, §28
   // -------------------------------------------------------------------------
   //
-  // All four routes below are on the CONSOLE surface: `/api` prefix,
+  // All five routes below are on the CONSOLE surface: `/api` prefix,
   // `Authorization: Bearer` header — never confuse with the engine mount
   // (no `/api` prefix, `X-API-Key` header), which is BU.12.A.
 
@@ -506,6 +508,23 @@ final class BastionApi {
     final url = _withQuery('$_baseUrl/api/board', params);
     final result = await _transport.get(url, headers: _defaultHeaders);
     return _decode(result.statusCode, result.body, BoardDto.fromJson);
+  }
+
+  /// `GET /api/lanes` — fleet-wide lane-segment availability, optionally
+  /// filtered to one roadmap/epic (serve-api.md §28.1, v0.35, `BA.19.C`).
+  ///
+  /// A present-but-blank `epic` is rejected upstream the same way a blank
+  /// `scope=epic` is on `/api/board` (§13.4/§28.3) — this client never
+  /// emits `?epic=` for an empty string, matching [getBoard]'s `?epic`
+  /// handling.
+  ///
+  /// Throws [FatalAuthError] on `401`, [ApiError] on other HTTP errors, or a
+  /// [SocketException] / [HttpException] on network failure.
+  Future<LanesDto> getLanes({String? epic}) async {
+    final params = <String, String>{'epic': ?epic};
+    final url = _withQuery('$_baseUrl/api/lanes', params);
+    final result = await _transport.get(url, headers: _defaultHeaders);
+    return _decode(result.statusCode, result.body, LanesDto.fromJson);
   }
 
   /// `GET /api/attention` — the stale-carryover, aging-backlog and

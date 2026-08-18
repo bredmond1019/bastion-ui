@@ -41,6 +41,8 @@ lib/
 ├── services/                ← transport layer
 │   ├── bastion_api.dart     — REST client (BastionApi)
 │   ├── bastion_socket.dart  — WebSocket client with reconnect (BastionSocket)
+│   ├── engine_api.dart      — engine-mount REST client (EngineApi), X-API-Key auth,
+│   │                           serve-api.md §18
 │   └── notifications.dart   — local-notification wrapper + riverpod wiring
 ├── state/                   ← riverpod providers
 │   ├── connection_provider.dart — server config + live ConnectionStatus
@@ -50,6 +52,8 @@ lib/
 │   ├── repos_provider.dart      — workspace-registry repo list
 │   ├── workflows_provider.dart  — per-repo status/workflows + workflow_done event stream
 │   ├── commands_provider.dart   — persisted user-editable command-palette list (CommandsNotifier/commandsProvider)
+│   ├── engine_workflows_provider.dart — engineWorkflowsProvider: live workflow-type
+│   │                                registry backing the launch sheet's picker (BU.12.E)
 │   ├── briefing_model.dart      — pure view-model layer: BriefingViewModel, BriefingSectionState<T>,
 │   │                                null-safe descending ranking (gates/blocked/needs-input)
 │   ├── briefing_provider.dart   — briefingViewModelProvider composing board+attention+sessions
@@ -63,7 +67,8 @@ lib/
 │   ├── session_detail_screen.dart
 │   ├── dashboard_screen.dart
 │   ├── repo_detail_screen.dart
-│   └── quick_actions_screen.dart
+│   ├── quick_actions_screen.dart
+│   └── launch_sheet.dart    — LaunchSheet modal (repo + workflow type + spec slug), BU.12.E
 └── widgets/                 ← presentational, mostly provider-free components
     ├── connection_banner.dart
     ├── responsive_scaffold.dart — ResponsiveScaffold (phone/tablet list+detail split, isWide helper)
@@ -161,6 +166,11 @@ re-seed can never clobber newer WS-delivered state.
   summary, which implied a string).
 - `RepoWorkflowsState` (`state/workflows_provider.dart`) — `{status, workflows,
   loading}` snapshot for one repo, held by `RepoWorkflowsNotifier`.
+- `EngineWorkflowsState` (`state/engine_workflows_provider.dart`, BU.12.E) — sealed:
+  `EngineWorkflowsLoading` / `EngineWorkflowsUnavailable(EngineStatus, error?)` /
+  `EngineWorkflowsLoaded(types)`, three states rather than a plain list so
+  unconfigured/unmounted/unreachable stay distinguishable from a genuinely-empty
+  registry.
 - `RepoBadgeState` (`widgets/status_badge.dart`) — `idle` / `inFlight` / `hasHandoff`,
   in that priority order (in-flight outranks a pending handoff).
 - `CommandRequest` / `CommandResponse` (`models/action_dto.dart`) — mirror
