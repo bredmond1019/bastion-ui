@@ -332,10 +332,7 @@ class _RunsListBody extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const Expanded(child: Eyebrow(label: 'Runs')),
-              _LaunchEntryPoint(
-                status: launchEngineStatus,
-                onLaunch: onLaunch,
-              ),
+              _LaunchEntryPoint(status: launchEngineStatus, onLaunch: onLaunch),
             ],
           ),
         ),
