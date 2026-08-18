@@ -48,6 +48,7 @@ import '../theme/typography.dart';
 import '../widgets/brand/brand.dart';
 import '../widgets/confirm_sheet.dart';
 import '../widgets/instrument/instrument.dart';
+import 'launch_sheet.dart';
 
 /// The tone + icon + label a wire `status` string renders with, resolved
 /// once per row so both the run list and the node-drill-in view render
@@ -200,15 +201,59 @@ class _RunsScreenState extends ConsumerState<RunsScreen> {
   /// The run currently drilled into, or `null` for the list view.
   String? _selectedRunId;
 
+  /// The engine client backing the launch entry point (`BU.12.E` task 5),
+  /// built once the engine key + connection config have been read from
+  /// secure storage — same lazy-init pattern as
+  /// `_RunDetailBodyState._initEngine`. `null` until that read resolves.
+  EngineApi? _launchEngine;
+
+  /// Result of the mount probe run against [_launchEngine], or `null`
+  /// while the probe is still in flight. Feeds
+  /// [_LaunchEntryPoint._disabledReason] so "no key configured" and
+  /// "engine not mounted" read as distinct causes rather than one generic
+  /// disabled control.
+  EngineStatus? _launchEngineStatus;
+
   @override
   void initState() {
     super.initState();
     _now = DateTime.now();
+    _initLaunchEngine();
+  }
+
+  Future<void> _initLaunchEngine() async {
+    final config = ref.read(connectionProvider).config;
+    final key = await ref.read(connectionProvider.notifier).readEngineKey();
+    if (!mounted) return;
+    final engine = EngineApi(host: config.host, port: config.port, key: key);
+    final status = await engine.probeMount();
+    if (!mounted) {
+      engine.dispose();
+      return;
+    }
+    setState(() {
+      _launchEngine = engine;
+      _launchEngineStatus = status;
+    });
+  }
+
+  @override
+  void dispose() {
+    _launchEngine?.dispose();
+    super.dispose();
   }
 
   void _open(String runId) => setState(() => _selectedRunId = runId);
 
   void _closeDetail() => setState(() => _selectedRunId = null);
+
+  Future<void> _launch() async {
+    final engine = _launchEngine;
+    if (engine == null) return;
+    await showLaunchSheet(context, engine: engine);
+    // The runs list is WS-live (`runsProvider`) — a successful launch's
+    // new run arrives on the `runs` topic without a manual refetch here.
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -243,23 +288,36 @@ class _RunsScreenState extends ConsumerState<RunsScreen> {
 
     return Scaffold(
       appBar: AppBar(title: const Text('Runs')),
-      body: _RunsListBody(runs: runs, now: _now, onTap: _open),
+      body: _RunsListBody(
+        runs: runs,
+        now: _now,
+        onTap: _open,
+        launchEngineStatus: _launchEngineStatus,
+        onLaunch: _launch,
+      ),
     );
   }
 }
 
-/// The runs-list body: one [Eyebrow] section header, then either the
-/// no-engine/no-runs empty state or the scrolling list of run rows.
+/// The runs-list body: a header row ([Eyebrow] plus the launch entry
+/// point, `BU.12.E` task 5), then either the no-engine/no-runs empty
+/// state or the scrolling list of run rows.
 class _RunsListBody extends StatelessWidget {
   const _RunsListBody({
     required this.runs,
     required this.now,
     required this.onTap,
+    required this.launchEngineStatus,
+    required this.onLaunch,
   });
 
   final List<RunSummaryDto> runs;
   final DateTime now;
   final void Function(String runId) onTap;
+
+  /// Drives [_LaunchEntryPoint]'s enabled/disabled state and reason.
+  final EngineStatus? launchEngineStatus;
+  final VoidCallback onLaunch;
 
   @override
   Widget build(BuildContext context) {
@@ -268,9 +326,18 @@ class _RunsListBody extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Padding(
-          padding: EdgeInsets.fromLTRB(16, 16, 16, 8),
-          child: Eyebrow(label: 'Runs'),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Expanded(child: Eyebrow(label: 'Runs')),
+              _LaunchEntryPoint(
+                status: launchEngineStatus,
+                onLaunch: onLaunch,
+              ),
+            ],
+          ),
         ),
         Expanded(
           child: sorted.isEmpty
@@ -296,6 +363,82 @@ class _RunsListBody extends StatelessWidget {
                   },
                 ),
         ),
+      ],
+    );
+  }
+}
+
+/// The launch entry point on the runs list header (`BU.12.E` task 5) —
+/// deliberately a small text-and-icon control, not a [FilledButton], so it
+/// never out-weighs the run rows the way [_RunControlRow]'s Pause/Resume/
+/// Abort row is allowed to (that row IS the primary content of the run
+/// detail screen; here launching is secondary to "what is running").
+///
+/// **Disabled with a visible reason, not hidden** whenever
+/// [EngineStatus.available] is not reached — reusing the same
+/// `EngineStatus` mount probe [_RunControlRow] uses so "no key configured"
+/// and "engine not mounted" render as distinguishable reasons rather than
+/// one generic disabled state.
+class _LaunchEntryPoint extends StatelessWidget {
+  const _LaunchEntryPoint({required this.status, required this.onLaunch});
+
+  final EngineStatus? status;
+  final VoidCallback onLaunch;
+
+  bool get _enabled => status == EngineStatus.available;
+
+  /// The visible reason the entry point is disabled, or `null` when the
+  /// engine is available. Every [EngineStatus] member gets its own
+  /// distinguishable reason string — mirrors
+  /// `_RunControlRowState._engineDisabledReason`.
+  String? get _disabledReason {
+    switch (status) {
+      case null:
+        return 'Checking engine status…';
+      case EngineStatus.notConfigured:
+        return 'No engine key configured — set one in Settings.';
+      case EngineStatus.notMounted:
+        return 'Engine not mounted on this server.';
+      case EngineStatus.unauthorized:
+        return 'Engine key was rejected.';
+      case EngineStatus.unreachable:
+        return 'Engine unreachable.';
+      case EngineStatus.available:
+        return null;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final reason = _disabledReason;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: [
+        TextButton.icon(
+          key: const ValueKey('runs-launch-entry'),
+          onPressed: _enabled ? onLaunch : null,
+          style: TextButton.styleFrom(
+            foregroundColor: AppTokens.accent2,
+            disabledForegroundColor: AppTokens.inkFaint,
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            visualDensity: VisualDensity.compact,
+          ),
+          icon: const Icon(Icons.add_circle_outline, size: 18),
+          label: const Text('Launch'),
+        ),
+        if (reason != null)
+          Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: Text(
+              reason,
+              key: const ValueKey('runs-launch-disabled-reason'),
+              style: AppTypography.textTheme.bodySmall?.copyWith(
+                color: AppTokens.inkFaint,
+              ),
+              textAlign: TextAlign.right,
+            ),
+          ),
       ],
     );
   }
