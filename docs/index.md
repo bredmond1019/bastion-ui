@@ -7,7 +7,7 @@ layer: [surface]
 project: bastion-ui
 status: active
 keywords: [index, navigation, docs]
-related: [architecture, api-reference, pages, testing]
+related: [architecture, api-reference, pages, testing, device-install]
 ---
 
 # BastionUI Docs Index
@@ -18,3 +18,4 @@ related: [architecture, api-reference, pages, testing]
 | [`api-reference.md`](api-reference.md) | `BastionApi` REST methods, `BastionSocket` WS frames/topics, DTOs |
 | [`pages.md`](pages.md) | Screens, routes, and the providers/widgets each one wires together |
 | [`testing.md`](testing.md) | The three test tiers (unit/widget, integration, e2e+Patrol) — what each answers and what it costs to run; plus `scripts/start_dev_env.sh`, the manual dev-environment bootstrap (emulator + real `bastion serve`) |
+| [`device-install.md`](device-install.md) | Wireless install onto a Pixel Tablet or Pixel phone (adb pairing) and pointing the app at `bastion serve` over Tailscale |
