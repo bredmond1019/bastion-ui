@@ -33,74 +33,66 @@ void main() {
       harness = null;
     });
 
-    test(
-      'a bad-topic subscribe elicits a real WS_ERR ErrorFrame',
-      () async {
-        harness = await BastionServeHarness.start();
-        final h = harness;
-        if (h == null) {
-          const whereChecked =
-              'checked BASTION_BIN, ../bastion/target/release/bastion, '
-              '../bastion/target/debug/bastion';
-          if (bastionE2eRequireBinary()) {
-            fail(
-              '$bastionE2eRequireEnvVar is set but no bastion binary could '
-              'be located ($whereChecked) — build one with '
-              '`cargo build -p bastion` in ../bastion, or set BASTION_BIN.',
-            );
-          }
-          markTestSkipped(
-            'no bastion binary found ($whereChecked) — skipping error-frame '
-            'e2e (set $bastionE2eRequireEnvVar=1 to make this a hard failure '
-            'instead)',
+    test('a bad-topic subscribe elicits a real WS_ERR ErrorFrame', () async {
+      harness = await BastionServeHarness.start();
+      final h = harness;
+      if (h == null) {
+        const whereChecked =
+            'checked BASTION_BIN, ../bastion/target/release/bastion, '
+            '../bastion/target/debug/bastion';
+        if (bastionE2eRequireBinary()) {
+          fail(
+            '$bastionE2eRequireEnvVar is set but no bastion binary could '
+            'be located ($whereChecked) — build one with '
+            '`cargo build -p bastion` in ../bastion, or set BASTION_BIN.',
           );
-          return;
         }
-
-        final socket = BastionSocket(
-          host: h.host,
-          port: h.port,
-          token: h.token,
+        markTestSkipped(
+          'no bastion binary found ($whereChecked) — skipping error-frame '
+          'e2e (set $bastionE2eRequireEnvVar=1 to make this a hard failure '
+          'instead)',
         );
-        try {
-          final connected = awaitStatus(
-            socket,
-            ConnectionStatus.connected,
-            timeout: const Duration(seconds: 10),
-          );
-          socket.connect();
-          await connected;
-          expect(socket.status, ConnectionStatus.connected);
+        return;
+      }
 
-          // Arm the collector BEFORE sending the bad frame (subscribe-before-
-          // trigger discipline), then send a subscribe for a topic that is
-          // neither "sessions" nor "pane:<name>" — the server classifies it as
-          // an unknown/malformed topic and returns an `error` frame.
-          final collected = collectFrames(
-            socket,
-            match: (f) => f is ErrorFrame,
-            timeout: const Duration(seconds: 10),
-          );
-          socket.send(const {
-            'kind': 'subscribe',
-            'payload': {'topic': 'bu9e-bogus-topic'},
-          });
+      final socket = BastionSocket(host: h.host, port: h.port, token: h.token);
+      try {
+        final connected = awaitStatus(
+          socket,
+          ConnectionStatus.connected,
+          timeout: const Duration(seconds: 10),
+        );
+        socket.connect();
+        await connected;
+        expect(socket.status, ConnectionStatus.connected);
 
-          final frames = await collected;
-          expect(frames, isNotEmpty);
-          expect(frames.first, isA<ErrorFrame>());
-          final error = frames.first as ErrorFrame;
-          expect(
-            error.payload.code,
-            'WS_ERR',
-            reason: 'serve-api §7.8: WS error frames carry code "WS_ERR"',
-          );
-          expect(error.payload.message, isNotNull);
-        } finally {
-          await socket.dispose();
-        }
-      },
-      timeout: const Timeout(Duration(seconds: 60)),
-    );
+        // Arm the collector BEFORE sending the bad frame (subscribe-before-
+        // trigger discipline), then send a subscribe for a topic that is
+        // neither "sessions" nor "pane:<name>" — the server classifies it as
+        // an unknown/malformed topic and returns an `error` frame.
+        final collected = collectFrames(
+          socket,
+          match: (f) => f is ErrorFrame,
+          timeout: const Duration(seconds: 10),
+        );
+        socket.send(const {
+          'kind': 'subscribe',
+          'payload': {'topic': 'bu9e-bogus-topic'},
+        });
+
+        final frames = await collected;
+        expect(frames, isNotEmpty);
+        expect(frames.first, isA<ErrorFrame>());
+        final error = frames.first as ErrorFrame;
+        expect(
+          error.payload.code,
+          'WS_ERR',
+          reason: 'serve-api §7.8: WS error frames carry code "WS_ERR"',
+        );
+        expect(error.payload.message, isNotNull);
+      } finally {
+        await socket.dispose();
+      }
+    }, timeout: const Timeout(Duration(seconds: 60)));
   });
 }

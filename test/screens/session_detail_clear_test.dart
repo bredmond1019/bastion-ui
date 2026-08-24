@@ -271,11 +271,9 @@ void main() {
       );
       await pump(tester);
 
-      expect(
-        container.read(needsInputProvider),
-        {'beta'},
-        reason: 'a session that was never flagged clears nothing else.',
-      );
+      expect(container.read(needsInputProvider), {
+        'beta',
+      }, reason: 'a session that was never flagged clears nothing else.');
       expect(tester.takeException(), isNull);
     });
 

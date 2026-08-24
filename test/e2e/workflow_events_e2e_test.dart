@@ -118,73 +118,69 @@ void main() {
       harness = null;
     });
 
-    test(
-      'spawn-mode postCommand round-trips through getSessions',
-      () async {
-        harness = await BastionServeHarness.start();
-        final h = harness;
-        if (h == null) {
-          markTestSkipped(
-            'bastion binary not found — skipping spawn round-trip e2e',
-          );
-          return;
-        }
+    test('spawn-mode postCommand round-trips through getSessions', () async {
+      harness = await BastionServeHarness.start();
+      final h = harness;
+      if (h == null) {
+        markTestSkipped(
+          'bastion binary not found — skipping spawn round-trip e2e',
+        );
+        return;
+      }
 
-        if (!tmuxAvailable()) {
-          markTestSkipped('tmux not available — skipping spawn round-trip e2e');
-          return;
-        }
+      if (!tmuxAvailable()) {
+        markTestSkipped('tmux not available — skipping spawn round-trip e2e');
+        return;
+      }
 
-        final api = BastionApi(host: h.host, port: h.port, token: h.token);
-        String? sessionId;
+      final api = BastionApi(host: h.host, port: h.port, token: h.token);
+      String? sessionId;
+      try {
         try {
+          sessionId = await api.postCommand(
+            const CommandRequest(
+              mode: CommandMode.spawn,
+              name: '8b-spawn-roundtrip',
+              command: '/status',
+              model: CommandModel.sonnet,
+            ),
+          );
+        } on ApiError catch (e) {
+          // Readiness (§12.3 `504`/`C007`) is an environment property (a
+          // runnable `claude` binary), not a contract property — self-skip
+          // on that specific failure rather than hard-failing.
+          Map<String, dynamic>? body;
           try {
-            sessionId = await api.postCommand(
-              const CommandRequest(
-                mode: CommandMode.spawn,
-                name: '8b-spawn-roundtrip',
-                command: '/status',
-                model: CommandModel.sonnet,
-              ),
+            body = jsonDecode(e.body) as Map<String, dynamic>;
+          } catch (_) {
+            body = null;
+          }
+          if (e.statusCode == 504 && body?['code'] == 'C007') {
+            markTestSkipped(
+              'spawn readiness timed out (no runnable claude in this '
+              'environment) — skipping spawn round-trip e2e',
             );
-          } on ApiError catch (e) {
-            // Readiness (§12.3 `504`/`C007`) is an environment property (a
-            // runnable `claude` binary), not a contract property — self-skip
-            // on that specific failure rather than hard-failing.
-            Map<String, dynamic>? body;
-            try {
-              body = jsonDecode(e.body) as Map<String, dynamic>;
-            } catch (_) {
-              body = null;
-            }
-            if (e.statusCode == 504 && body?['code'] == 'C007') {
-              markTestSkipped(
-                'spawn readiness timed out (no runnable claude in this '
-                'environment) — skipping spawn round-trip e2e',
-              );
-              return;
-            }
-            rethrow;
+            return;
           }
-
-          expect(sessionId, isNotEmpty);
-
-          final sessions = await api.getSessions();
-          expect(sessions.map((s) => s.name), contains(sessionId));
-        } finally {
-          if (sessionId != null && sessionId.isNotEmpty) {
-            try {
-              await api.deleteSession(sessionId);
-            } catch (_) {
-              // Best-effort cleanup — never let a teardown failure mask the
-              // real result or the original error.
-            }
-          }
-          api.dispose();
+          rethrow;
         }
-      },
-      timeout: const Timeout(Duration(seconds: 60)),
-    );
+
+        expect(sessionId, isNotEmpty);
+
+        final sessions = await api.getSessions();
+        expect(sessions.map((s) => s.name), contains(sessionId));
+      } finally {
+        if (sessionId != null && sessionId.isNotEmpty) {
+          try {
+            await api.deleteSession(sessionId);
+          } catch (_) {
+            // Best-effort cleanup — never let a teardown failure mask the
+            // real result or the original error.
+          }
+        }
+        api.dispose();
+      }
+    }, timeout: const Timeout(Duration(seconds: 60)));
 
     test('inject-mode postCommand against an unknown session yields '
         '404/C002 per §12.3', () async {
