@@ -16,4 +16,4 @@
 /// Before this pin existed, the contract version was tracked only in prose
 /// comments, which is how the client drifted 25 contract versions without
 /// anything failing.
-const String kServeApiPin = 'v0.36';
+const String kServeApiPin = 'v0.38';
