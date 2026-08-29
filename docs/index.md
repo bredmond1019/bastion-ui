@@ -6,16 +6,26 @@ doc_id: docs-index
 layer: [surface]
 project: bastion-ui
 status: active
-keywords: [index, navigation, docs]
-related: [architecture, api-reference, pages, testing, device-install]
+keywords: [index, navigation, docs, capabilities]
+related: [capabilities, architecture, api-reference, pages, testing, device-install]
 ---
 
 # BastionUI Docs Index
 
+Each doc is the authority on its own subject — these cells only say which one to open.
+
+## Using the app
+
 | Doc | Contents |
 |---|---|
-| [`architecture.md`](architecture.md) | Module map, key types, data flow (connection lifecycle, REST+WS seed/live pattern, routing, dashboard/repo-detail flow) |
-| [`api-reference.md`](api-reference.md) | `BastionApi` REST methods, `BastionSocket` WS frames/topics, DTOs |
-| [`pages.md`](pages.md) | Screens, routes, and the providers/widgets each one wires together |
-| [`testing.md`](testing.md) | The three test tiers (unit/widget, integration, e2e+Patrol) — what each answers and what it costs to run; plus `scripts/start_dev_env.sh`, the manual dev-environment bootstrap (emulator + real `bastion serve`) |
-| [`device-install.md`](device-install.md) | Wireless install onto a Pixel Tablet or Pixel phone (adb pairing) and pointing the app at `bastion serve` over Tailscale |
+| [`capabilities.md`](capabilities.md) | Every capability, how to invoke it, and what it calls |
+| [`device-install.md`](device-install.md) | Wireless install onto a Pixel tablet/phone over Tailscale |
+
+## Working on the code
+
+| Doc | Contents |
+|---|---|
+| [`architecture.md`](architecture.md) | Data flow, module map, key types |
+| [`pages.md`](pages.md) | Each screen's route, providers and widgets |
+| [`api-reference.md`](api-reference.md) | Client methods, routes, DTOs, WS frames |
+| [`testing.md`](testing.md) | The three test tiers and the dev-environment bootstrap |

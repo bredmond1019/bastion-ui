@@ -7,21 +7,31 @@ layer: [surface]
 project: bastion-ui
 status: active
 keywords: [rest, websocket, bastion-api, bastion-socket, dto, serve-api]
-related: [architecture]
+related: [capabilities, architecture]
 ---
 
 # BastionUI API Client Reference
 
+## What this page is for
+
+You need to know exactly what request BastionUI sends, what it gets back, and how it
+behaves when that goes wrong — before changing a client method, adding a screen that
+needs data, or chasing a decode bug. For *what the app can do* rather than how it
+talks, start at [`capabilities.md`](capabilities.md).
+
 BastionUI mirrors (never defines) the `bastion serve` HTTP+WS contract owned by
 `bastion/docs/serve-api.md` in the `bastion` repo. This doc describes BastionUI's own
-client-layer surface — `lib/services/bastion_api.dart` (REST) and
-`lib/services/bastion_socket.dart` (WebSocket) — not the server contract itself.
+client-layer surface — [`lib/services/bastion_api.dart`](../lib/services/bastion_api.dart)
+(REST), [`lib/services/engine_api.dart`](../lib/services/engine_api.dart) (the engine
+mount) and [`lib/services/bastion_socket.dart`](../lib/services/bastion_socket.dart)
+(WebSocket) — not the server contract itself.
 
-Block BU.11.A pinned the model layer against serve-api v0.30 and added the app's
-first machine-checked contract pin, `kServeApiPin` in
-`lib/services/serve_api_version.dart`. Trust that constant over any version number
-in this file's prose — `test/services/serve_api_version_test.dart` drift-tests it
-against a sibling `bastion` checkout when one is present.
+**The contract version is a constant, not prose.** `kServeApiPin` in
+[`lib/services/serve_api_version.dart`](../lib/services/serve_api_version.dart) records
+the revision the model layer was written against (added by block BU.11.A, which pinned
+it at v0.30; it has moved since). Trust that constant over any version number written
+in this file — `test/services/serve_api_version_test.dart` drift-tests it against a
+sibling `bastion` checkout when one is present, and skips cleanly when it is not.
 
 ## `BastionApi` (`lib/services/bastion_api.dart`)
 
@@ -44,6 +54,7 @@ REST client for `http://<host>:<port>`. Every request sends `Authorization: Bear
 | `getRepoWorkflows(name)` | `GET /api/repos/{name}/workflows` | `List<WorkflowStateDto>` | In-flight + completed SDLC workflows for the repo |
 | `postCommand(CommandRequest)` | `POST /api/actions/command` | `String` (session id) | Fires a quick-action command; inject targets an existing session, spawn creates one. Returns `CommandResponse.session` |
 | `getBoard({scope, tier, repo, epic, graph})` | `GET /api/board` | `BoardDto` | now/next/blocked/deferred/finished lanes; `graph` defaults `false` and emits `?graph=true` only when `true` (roughly doubles wall-clock on the live HQ corpus) |
+| `getLanes({epic})` | `GET /api/lanes` | `LanesDto` | Fleet-wide lane-segment availability (serve-api.md §28.1, v0.35); optional `epic` filters to one roadmap. Never emits `?epic=` for a blank string. **No screen consumes this yet** — see [`capabilities.md`](capabilities.md#not-surfaced-in-the-ui-yet) |
 | `getAttention({scope, tier})` | `GET /api/attention` | `AttentionDto` | stale-carryover/aging-backlog/orphaned-captures lanes |
 | `getDocsTree(repo, {path})` | `GET /api/docs/{repo}/tree` | `DocTreeDto` | Allowlisted markdown tree, optionally rooted at `path` |
 | `getDocsFile(repo, {path})` | `GET /api/docs/{repo}/file` | `DocFileDto` | Raw markdown content; server rejects traversal paths (§16.2) with `ApiError` |
@@ -64,6 +75,7 @@ REST client for `http://<host>:<port>`. Every request sends `Authorization: Bear
 - `BoardDto { scope, tier?, lanes, repos, stale }`, `BoardLaneDto { now, next, blocked, deferred, finished }` (five `List<BoardBlockDto>`, each defaulting to `[]` when absent), `BoardBlockDto { id, title, repo, status?, blockedBy, epics, wave?, dependentCount?, ready?, unmetCount?, lastTouched? }` — `models/board_dto.dart`, mirroring serve-api.md §13 (`GET /api/board`). The three graph-gated fields are `null` unless the request passed `?graph=true` — `null` means "not requested", never a fabricated `false`/`0`. `lastTouched` is a nullable `DateTime` parsed from the wire's ISO string via `DateTime.tryParse` (never `DateTime.parse`, so a malformed string degrades to `null` instead of throwing); `null` unconditionally means "never worked", never "worked long ago". `blockedBy` decodes each `okf_core::BlockedBy` variant it recognises (`BlockDepDto`, `ExternalDepDto`, `OperatorDepDto`, `ApprovalDepDto`) and falls back to `UnknownBlockedByDto` (raw map) for shapes not yet on the wire, mirroring `frame.dart`'s `UnknownFrame` pattern.
 - `AttentionDto { scope?, tier?, asOf, lanes, thresholds }`, `AttentionLanesDto { staleCarryover, agingBacklog, orphanedCaptures }` (each optional on the wire, defaulting to `[]`), `AttentionCarryoverDto { repo, slug, kind, text, clearsWhen?, created?, reviewed?, ageDays?, thresholdDays, lane, priority?, effectivePriority?, unmetBlocks, findingId?, clearsWhenSatisfied }`, `AttentionBacklogDto { repo, slug, title, kind, status, notes?, created?, reviewed?, ageDays, thresholdDays }` (backs both `agingBacklog` and `orphanedCaptures`), `AttentionThresholdsDto` — `models/attention_dto.dart`, mirroring serve-api.md §15 (`GET /api/attention`). `ageDays` on the carryover DTO is nullable — `null` means "no age known" (snoozed / no parseable anchor date), never `0`.
 - `DocTreeDto { repo, root, entries }`, `DocEntryDto { path, name, isDir }`, `DocFileDto { repo, path, content, bytes, modified? }` — `models/docs_dto.dart`, mirroring serve-api.md §16 (`GET /api/docs/{repo}/tree`, `GET /api/docs/{repo}/file`). `content` is raw, already-traversal-checked markdown; the client never sanitises or rewrites paths (the server owns that, §16.2).
+- `LanesDto { derivedAt, degraded, segments }`, `LaneSegmentDto { roadmap, lane, segment, repo, head?, availability, reason?, leverageLanesFreed }` — `models/lanes_dto.dart`, mirroring serve-api.md §28 (`GET /api/lanes`). `availability` is carried as a plain `String` (`done` / `held-block` / `held-operator` / `held-repo-busy` / `held-slot` / `startable`), never an enum: mev owns that vocabulary, so a mirrored enum would silently stop covering a state the moment mev adds one. `head` is absent (not blank) on a `done` segment; `degraded: true` distinguishes "no live holds" from "the fleet-lock read failed", and `leverageLanesFreed` on a `done` segment is historical, not actionable.
 - `RunSummaryDto { runId, workflowType?, status, specSlug?, startedAt?, updatedAt?, repo? }` — one row from `GET /api/runs`. `RunStateDto { runId, event?, metadata?, nodes: List<NodeTransitionDto> }` — `GET /api/runs/{id}` detail; `nodes` is one entry per node class in `TaskContext::node_runs`, sorted by class name, `[]` when none recorded. `NodeTransitionDto { node, status, startedAt?, completedAt?, error?, input?, output?, usage: RunUsageDto? }`, `RunUsageDto { inputTokens?, outputTokens?, model }` — `models/run_dto.dart`, mirroring serve-api.md §14, BU.13.E. Status fields (`RunSummaryDto.status`, `NodeTransitionDto.status`) decode as raw `String` (never an enum), so an unrecognised wire status can never throw.
 
 All DTOs live in pure-Dart files (no Flutter imports) with `fromJson`/`toJson` and are
@@ -71,8 +83,7 @@ unit-tested for round-trip decoding in `test/models/`.
 
 ## `EngineApi` (`lib/services/engine_api.dart`)
 
-Separate client from `BastionApi` for the embedded engine mount (serve-api.md §18,
-v0.30). Root differences from `BastionApi`: no `/api` prefix (`http://<host>:<port>/workflows`,
+Separate client from `BastionApi` for the embedded engine mount (serve-api.md §18). Root differences from `BastionApi`: no `/api` prefix (`http://<host>:<port>/workflows`,
 not `.../api/workflows`), auth via `X-API-Key` (never `Authorization: Bearer`), and every
 route degrades to a typed unavailability state rather than crashing when the server was
 started without `DATABASE_URL`/`BASTION_ENGINE_API_KEY`. `EngineNotConfiguredError` is

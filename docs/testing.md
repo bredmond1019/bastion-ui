@@ -6,14 +6,39 @@ doc_id: testing
 layer: [surface]
 project: bastion-ui
 status: active
-keywords: [testing, integration-tests, e2e, patrol, fake-http-transport, coverage-guard, dev-environment, emulator]
+keywords: [testing, integration-tests, e2e, patrol, coverage-guard, dev-environment, emulator]
 related: [architecture, api-reference]
 ---
 
 # BastionUI Test Tiers
 
-BastionUI carries three test tiers. Each answers a different question about the app, and
-each has a different cost to run.
+## What this page is for
+
+You are about to add or change code and need to know which tests must come with it, or
+a check went red and you need to know what that tier was even asking. BastionUI carries
+three test tiers; each answers a different question, and each costs something different
+to run.
+
+## Quickstart
+
+Typed in a terminal at this repo's root:
+
+```bash
+dart format --output=none --set-exit-if-changed lib test   # gating
+flutter analyze                                            # gating
+flutter test --exclude-tags e2e                            # gating: tiers 1 + 2
+flutter test --tags e2e                                    # tier 3, NOT gating; self-skips with no `bastion` binary
+```
+
+The three gating commands come from `planning/harness.json` (that directory is a symlink
+into the private brain vault and is not in this public repo). The SDLC engines read the
+commands from there — change them there, never in a `workflows/*.js` engine.
+
+| Tier | Answers | Cost | Gating |
+|---|---|---|---|
+| [1. Unit + widget](#1-unit--widget--gated-mocked) | Does this function/widget behave in isolation? | cheap | yes |
+| [2. Integration](#2-integration--gated-real-client--real-providers-over-a-routing-fake) | Does the real client still speak the wire contract? | cheap | yes |
+| [3. E2E + Patrol](#3-e2e--patrol--non-gating-needs-a-real-server-and-a-device) | Does a real server still speak this, on a real device? | expensive | no |
 
 ## 1. Unit + widget — gated, mocked
 
@@ -80,7 +105,17 @@ device/emulator?
 connected device/emulator. Tagged `e2e` and excluded from the default gating command; run
 explicitly with `flutter test --tags e2e`.
 
-**Shape:** full-stack tests driving the app against a live `bastion serve`.
+**Shape:** two independent non-gating checks, both self-skipping when their prerequisite
+is missing, both run by hand (this project's `testDepth` is `fast`, so the SDLC engines
+never auto-run a `gates: false` check):
+
+| Check | Command (terminal, repo root) | Needs |
+|---|---|---|
+| `e2e-serve-contract` | `flutter test --tags e2e` | A built `bastion` binary; spawns a real `bastion serve` and drives the app's real network clients against it |
+| `patrol-visual-smoke` | `scripts/run_patrol_smoke.sh` | An attached Android device/emulator **and** a built `bastion` binary; drives the real UI and captures screenshots (convention: `visual_smoke/README.md`) |
+
+To get both prerequisites up in one call, use `scripts/start_dev_env.sh` — see
+[Manual dev environment](#manual-dev-environment--device--a-real-bastion-serve) below.
 
 ## What no tier can verify
 

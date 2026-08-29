@@ -7,14 +7,23 @@ layer: [surface]
 project: bastion-ui
 status: active
 keywords: [screens, routes, riverpod, navigation, dashboard, sessions, briefing]
-related: [architecture, api-reference]
+related: [capabilities, architecture, api-reference]
 ---
 
 # BastionUI Screens
 
-All screens live in `lib/screens/`. Routing is handled by `BastionApp.onGenerateRoute`
-in `lib/main.dart`; the app's root shell (`HomeShell` → `_ConnectedBody`) hosts a
-bottom `NavigationBar` with five tabs.
+## What this page is for
+
+You are changing a screen, or trying to find which file draws the thing you are looking
+at, and need the provider/widget/route wiring behind each one. For *what the app can do
+and how to invoke it*, read [`capabilities.md`](capabilities.md) instead — this page
+assumes you already know what the screen is for.
+
+All screens live in [`lib/screens/`](../lib/screens/). Routing is handled by
+`BastionApp.onGenerateRoute` in [`lib/main.dart`](../lib/main.dart); the app's root shell
+(`HomeShell` → `_ConnectedBody`) hosts a bottom `NavigationBar` with five tabs
+(**Briefing · Sessions · Dashboard · Actions · Runs**), and Settings is pushed from the
+app bar rather than being a tab.
 
 ## `HomeShell` (`lib/main.dart`)
 
@@ -41,10 +50,20 @@ Also activates `notificationWiringProvider` and
 
 ## `SettingsScreen`
 
-Not tab-routed — pushed via the AppBar settings `IconButton` on `HomeShell`. Form for
-server host, port (default `4317` — matches `bastion serve`'s compiled-in `--addr` default,
-per `bastion/docs/serve-api.md`), and bearer token; validates all three, then calls
-`ConnectionNotifier.saveConfig` (persists via `FlutterSecureStorage`).
+Not tab-routed — pushed via the AppBar settings `IconButton` on `HomeShell`. Four fields:
+
+| Field | Notes |
+|---|---|
+| Server host | Tailscale IP or hostname of the `bastion serve` machine |
+| Port | Default `4317` — `bastion serve`'s compiled-in `--addr` default, per `bastion/docs/serve-api.md`. Confirm the port your server is actually bound to |
+| Bearer token | Validated with host/port, then saved via `ConnectionNotifier.saveConfig` (persists through `FlutterSecureStorage`) |
+| Engine API key *(optional)* | Saved via `ConnectionNotifier.saveEngineKey`; an **empty value is a valid save** meaning "no engine access" (it deletes the stored key rather than erroring) |
+
+Saving the engine key immediately re-runs `EngineApi.probeMount()` and renders the result
+as a status pill under the field — `checking…` / `not configured` / `engine not mounted on
+this server` / `key rejected` / `connected`. The five states are kept distinct on purpose:
+"no key" and "wrong key" and "server has no engine" are different problems with different
+fixes.
 
 > **Deployment note:** the Mac Mini's real console instance (`com.brandon.bastion-serve`) is
 > bound to port `8080`, not `4317` — see `docs/infrastructure.md`'s Services table. `4317`
@@ -121,8 +140,24 @@ Tapping a row navigates to `/repos/<name>` via `repoDetailRouteName(name)`.
 
 ## `RepoDetailScreen`
 
-Route: `/repos/<name>` (route argument: `repoName`). Watches the same
-`repoWorkflowsProvider(repoName)` family as the dashboard row for:
+Route: `/repos/<name>` (route argument: `repoName`). Watches two providers.
+
+From `repoBoardProvider(repoName)` (`state/repo_board_provider.dart`, BU.13.C) — the
+repo's **typed** block records from `GET /api/board`:
+
+- `RepoDetailStats` — three `StatTile`s counting the now/next/blocked *lanes*.
+- `RepoDetailBlockLanes` — one group per lane, each block a `SeverityRow` with a
+  readiness pill (`READY` / `WAITING` / `UNKNOWN`; anything in the blocked lane always
+  reads `BLOCKED`) and a "what it waits on" phrase from
+  `state/blocked_by_label.dart`. Every lane renders a **named** empty state
+  ("nothing blocked", etc.) — never a gap, and never a literal `[]` (that was a shipped
+  bug, `BU.ticket.dashboard-now-render`, guarded by `repo_detail_empty_test.dart`).
+
+These deliberately read the typed lane lists, never `RepoStatusDto`'s prose
+`now`/`next`/`blocked` strings — the two can disagree, and that disagreement is why the
+typed path exists.
+
+From `repoWorkflowsProvider(repoName)` — the same family the dashboard row watches:
 
 - `_StatusTable` — the parsed `now`/`next`/`blocked` + five momentum fields as a
   label/value list (blank values omitted).

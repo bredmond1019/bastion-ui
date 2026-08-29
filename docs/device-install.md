@@ -6,15 +6,34 @@ doc_id: device-install
 layer: [surface]
 project: bastion-ui
 status: active
-keywords: [install, pixel, tablet, phone, adb, wireless debugging, tailscale, deployment]
-related: [architecture, api-reference]
+keywords: [install, pixel, tablet, adb, wireless debugging, tailscale, deployment]
+related: [capabilities, architecture, api-reference]
 ---
 
 # Device Install — Pixel Tablet & Pixel Phone
 
 How to get BastionUI running on a real Android device (Pixel Tablet or Pixel phone) and
-connected to `bastion serve` on the Mac Mini over Tailscale, with no cable required after
-the initial pairing.
+connected to `bastion serve` over Tailscale, with no cable required after the initial
+pairing.
+
+## What this page is for
+
+You have the app building on an emulator and now want it on the actual tablet you will
+use it from. Four steps: unlock wireless debugging, pair once over the LAN, install, then
+point the app at your server. After that, every later install works over Tailscale with
+no cable and no re-pairing.
+
+Once it is installed, what you can do with it: [`capabilities.md`](capabilities.md).
+
+## Quickstart (device already paired)
+
+```bash
+adb connect <device-tailscale-ip>:<debug-port>
+flutter run -d <device-id>
+```
+
+If `adb connect` fails or `flutter devices` is empty, you have not paired yet — start at
+step 1.
 
 ## 1. One-time device setup
 
@@ -69,8 +88,8 @@ In the app's **Settings** screen, enter:
 
 | Field | Value |
 |---|---|
-| Host | `100.104.113.100` (mac-mini's Tailscale IP) |
-| Port | `8080` (the live bound port — not the `4317` doc default in `serve-api.md`; confirm against the health check's `bastion serve (http://...)` line) |
+| Host | the Mac Mini's Tailscale IP — run `tailscale ip -4` on the Mac Mini, or read it from the Tailscale admin console; do not hardcode it anywhere shared (a `100.x.y.z` address is a real address on your tailnet, not a placeholder) |
+| Port | the live bound port — not the `4317` doc default in `serve-api.md`; confirm against `./scripts/health_check.sh`'s `bastion serve (http://...)` line |
 | Token | the Mac Mini's `BASTION_SERVE_TOKEN` value |
 
 The bearer token is stored via `flutter_secure_storage` on-device (Standing Rule 7 — never

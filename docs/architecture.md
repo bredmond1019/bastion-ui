@@ -7,15 +7,48 @@ layer: [surface]
 project: bastion-ui
 status: active
 keywords: [flutter, riverpod, websocket, rest, dto, providers, briefing]
-related: [api-reference, pages]
+related: [capabilities, api-reference, pages]
 ---
 
 # BastionUI Architecture
+
+## What this page is for
+
+You are about to change how data moves through the app — add a provider, wire a new
+screen to a route, or work out why a widget shows stale state — and you need the shape
+before the detail. For *what the app can do*, read
+[`capabilities.md`](capabilities.md); for what each screen contains,
+[`pages.md`](pages.md); for the wire contract, [`api-reference.md`](api-reference.md).
 
 BastionUI is a thin Flutter client over `bastion serve`'s HTTP+WebSocket API (contract
 owned by the `bastion` repo's `bastion/docs/serve-api.md`; never edited here — see
 CLAUDE.md Standing Rule 6). It talks only to the Tailscale tailnet, never shells out to
 git/tmux, and stores the bearer token via `flutter_secure_storage`.
+
+## How a fact reaches the screen
+
+```mermaid
+flowchart LR
+    S["bastion serve<br/>(REST + WS)"] -->|"one-shot seed"| A["services/<br/>BastionApi"]
+    S -->|"live frames"| W["services/<br/>BastionSocket"]
+    A --> P["state/<br/>riverpod providers"]
+    W --> P
+    P --> V["screens/ + widgets/"]
+    M["models/<br/>pure-Dart DTOs"] -.->|"decode"| A
+    M -.->|"decode"| W
+```
+
+1. A provider seeds itself with **one REST call** through `BastionApi`.
+2. It then **subscribes to a WebSocket topic** (sessions, pane, runs) or re-fetches when
+   a matching `event` frame arrives (repo workflows — there is no push for those).
+3. Every payload decodes through a pure-Dart DTO in `models/` that never imports Flutter.
+4. A guard flag (e.g. `_sawWsSnapshot`) means a slow REST reply can never overwrite newer
+   WS state.
+5. Screens only ever read providers — no screen calls `BastionApi` for list state itself.
+
+The engine mount (`EngineApi`, run launch/pause/resume/abort) is a **second, separate
+client** with its own auth header and its own availability states; it is not a code path
+of `BastionApi`.
 
 ## Directory map
 
@@ -28,57 +61,62 @@ lib/
 │   ├── tokens.dart          — AppTokens: cool-aurora color palette, radius ladder, glow
 │   │                          values, alpha() helper
 │   ├── status_tones.dart    — StatusTones ThemeExtension: 6 semantic tones (neutral/info/
-│   │                          active/success/warning/danger), each fg/bg/border; ThemeData/
-│   │                          BuildContext.statusTones accessors
-│   └── typography.dart      — AppTypography.textTheme: Inter (display/headline/title),
-│                                Source Sans 3 (body/label), JetBrains Mono (labelMedium/mono)
+│   │                          active/success/warning/danger), each fg/bg/border
+│   └── typography.dart      — AppTypography.textTheme: Inter, Source Sans 3, JetBrains Mono
 ├── models/                 ← pure-Dart DTOs + frame (de)serialization (no Flutter imports)
 │   ├── dto.dart             — HealthDto, ErrorPayload
-│   ├── frame.dart           — BastionFrame sealed hierarchy (WS envelope)
-│   ├── session_dto.dart     — SessionDto, PaneDto
+│   ├── frame.dart           — BastionFrame sealed hierarchy (WS envelope) + ClientFrames
+│   ├── session_dto.dart     — AgentState, SessionDto, PaneDto
 │   ├── repo_status_dto.dart — RepoSummaryDto, RepoStatusDto, HandoffInfo, WorkflowStateDto
-│   └── action_dto.dart      — CommandMode, CommandModel, CommandRequest, CommandResponse
+│   ├── action_dto.dart      — CommandMode, CommandModel, CommandRequest, CommandResponse
+│   ├── board_dto.dart       — BoardDto, RepoBoardDto, BoardLaneDto, BoardBlockDto,
+│   │                          BlockOriginDto, the BlockedByDto sealed family
+│   ├── attention_dto.dart   — AttentionDto, AttentionLanesDto, AttentionCarryoverDto,
+│   │                          AttentionBacklogDto, AttentionThresholdsDto
+│   ├── lanes_dto.dart       — LanesDto, LaneSegmentDto (GET /api/lanes; no UI consumer yet)
+│   ├── docs_dto.dart        — DocTreeDto, DocEntryDto, DocFileDto (no UI consumer yet)
+│   └── run_dto.dart         — RunSummaryDto, RunStateDto, NodeTransitionDto, RunUsageDto
 ├── services/                ← transport layer
-│   ├── bastion_api.dart     — REST client (BastionApi)
+│   ├── bastion_api.dart     — REST client (BastionApi), Authorization: Bearer
 │   ├── bastion_socket.dart  — WebSocket client with reconnect (BastionSocket)
 │   ├── engine_api.dart      — engine-mount REST client (EngineApi), X-API-Key auth,
 │   │                           serve-api.md §18
+│   ├── serve_api_version.dart — kServeApiPin: the machine-checked contract pin
 │   └── notifications.dart   — local-notification wrapper + riverpod wiring
 ├── state/                   ← riverpod providers
-│   ├── connection_provider.dart — server config + live ConnectionStatus
+│   ├── connection_provider.dart — server config, engine key, live ConnectionStatus
 │   ├── sessions_provider.dart   — live session list + bastionSocketProvider/bastionApiProvider injection points
 │   ├── pane_provider.dart       — per-session live pane buffer
 │   ├── events_provider.dart     — needs_input event stream + flag set
 │   ├── repos_provider.dart      — workspace-registry repo list
 │   ├── workflows_provider.dart  — per-repo status/workflows + workflow_done event stream
-│   ├── commands_provider.dart   — persisted user-editable command-palette list (CommandsNotifier/commandsProvider)
-│   ├── engine_workflows_provider.dart — engineWorkflowsProvider: live workflow-type
-│   │                                registry backing the launch sheet's picker (BU.12.E)
-│   ├── briefing_model.dart      — pure view-model layer: BriefingViewModel, BriefingSectionState<T>,
-│   │                                null-safe descending ranking (gates/blocked/needs-input)
-│   ├── briefing_provider.dart   — briefingViewModelProvider composing board+attention+sessions
-│   │                                into three independently-fetching sections; refreshFailedBriefingSections
-│   └── portfolio_ranking.dart   — pure, Flutter-free rankPortfolio(): tiers repos into
-│                                    needsAttention/active/quiet from per-repo lane data
-├── screens/                 ← full-page widgets
-│   ├── briefing_screen.dart
-│   ├── settings_screen.dart
-│   ├── sessions_list_screen.dart
+│   ├── runs_provider.dart       — run list: REST seed + live "runs" WS topic (BU.13.E)
+│   ├── commands_provider.dart   — persisted user-editable command-palette list
+│   ├── engine_workflows_provider.dart — live workflow-type registry behind the launch sheet
+│   ├── briefing_model.dart      — pure view-model: BriefingViewModel, BriefingSectionState<T>
+│   ├── briefing_provider.dart   — composes board+attention+sessions into three sections
+│   ├── repo_board_provider.dart — typed per-repo block records from GET /api/board
+│   ├── portfolio_ranking.dart   — pure rankPortfolio(): needsAttention/active/quiet tiers
+│   └── blocked_by_label.dart    — pure: renders a BlockedByDto as operator-readable text
+├── screens/                 ← full-page widgets (one per tab, plus detail/sheets)
+│   ├── briefing_screen.dart      — tab 0
+│   ├── sessions_list_screen.dart — tab 1
 │   ├── session_detail_screen.dart
-│   ├── dashboard_screen.dart
+│   ├── dashboard_screen.dart     — tab 2
 │   ├── repo_detail_screen.dart
-│   ├── quick_actions_screen.dart
-│   └── launch_sheet.dart    — LaunchSheet modal (repo + workflow type + spec slug), BU.12.E
+│   ├── quick_actions_screen.dart — tab 3
+│   ├── runs_screen.dart          — tab 4, incl. run detail + pause/resume/abort controls
+│   ├── launch_sheet.dart         — LaunchSheet modal (repo + workflow type + spec slug)
+│   └── settings_screen.dart      — host/port/token + optional engine key, pushed from app bar
 └── widgets/                 ← presentational, mostly provider-free components
-    ├── connection_banner.dart
-    ├── responsive_scaffold.dart — ResponsiveScaffold (phone/tablet list+detail split, isWide helper)
-    ├── session_card.dart
-    ├── pane_view.dart
-    ├── approve_button_row.dart
-    ├── status_badge.dart
-    ├── markdown_view.dart
-    ├── workflow_progress.dart
-    └── command_invoke_sheet.dart
+    ├── connection_banner.dart · responsive_scaffold.dart · session_card.dart
+    ├── pane_view.dart · approve_button_row.dart · status_badge.dart
+    ├── markdown_view.dart · workflow_progress.dart · command_invoke_sheet.dart
+    ├── confirm_sheet.dart   — showConfirmSheet: the destructive-action gate (run abort)
+    ├── brand/               — bastiel_lockup, eyebrow, gradient_top_bar, heading_rule,
+    │                          icon_tile, panel_card, status_pill (barrel: brand.dart)
+    └── instrument/          — age_chip, gate_card, lane_bar, severity_row, sparkline,
+                               stat_tile (barrel: instrument.dart)
 ```
 
 ## Data flow
@@ -160,8 +198,8 @@ re-seed can never clobber newer WS-delivered state.
   or `MalformedFrame` (decode failure). Never throws.
 - `RepoSummaryDto` / `RepoStatusDto` / `HandoffInfo` / `WorkflowStateDto`
   (`models/repo_status_dto.dart`) — mirror serve-api.md's repo/workflow REST surface
-  (block BU.11.A pinned this at v0.30; see `lib/services/serve_api_version.dart` for
-  the current machine-checked value). `WorkflowStateDto.currentTask` is a JSON integer
+  (pinned at v0.30 by block BU.11.A; `lib/services/serve_api_version.dart` holds the
+  current machine-checked value). `WorkflowStateDto.currentTask` is a JSON integer
   (verified directly against serve-api.md rather than trusting the task spec's prose
   summary, which implied a string).
 - `RepoWorkflowsState` (`state/workflows_provider.dart`) — `{status, workflows,
@@ -174,8 +212,7 @@ re-seed can never clobber newer WS-delivered state.
 - `RepoBadgeState` (`widgets/status_badge.dart`) — `idle` / `inFlight` / `hasHandoff`,
   in that priority order (in-flight outranks a pending handoff).
 - `CommandRequest` / `CommandResponse` (`models/action_dto.dart`) — mirror
-  `POST /api/actions/command` (serve-api.md §12.1, pinned v0.30 — see
-  `lib/services/serve_api_version.dart`). `CommandRequest.toJson()` omits
+  `POST /api/actions/command` (serve-api.md §12.1 — version pin: `lib/services/serve_api_version.dart`). `CommandRequest.toJson()` omits
   `dir`/`model` when null and emits `session` only for `CommandMode.inject`,
   `name` only for `CommandMode.spawn`.
 - `BoardDto` / `BoardLaneDto` / `BoardBlockDto` (`models/board_dto.dart`),

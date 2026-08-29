@@ -63,26 +63,29 @@ Five bottom-navigation tabs, a Settings screen, and three detail/sheet screens, 
 | Briefing | Ranked "what needs you" home tab: gates + needs-input sessions, blocked work, live runs |
 | Sessions | List of live agent sessions, drilling into a pane view + input controls per session |
 | Dashboard | Portfolio view — repos tiered by needs-attention / active / quiet, with age + activity indicators |
-| Actions | Quick-action command palette to inject commands into a running session |
+| Actions | Editable command palette — inject a command into a running session, or spawn a new one |
 | Runs | Live list of workflow runs with pause/resume/abort control and per-run drill-in |
 | Settings | Server host/port/token configuration (pushed from the app bar, not a tab) |
 
-Full screen-by-screen detail, including which providers and routes back each one: [`docs/pages.md`](docs/pages.md). Module/data-flow map: [`docs/architecture.md`](docs/architecture.md). REST + WebSocket client surface: [`docs/api-reference.md`](docs/api-reference.md).
+**Every capability, one line each, with what to tap and what it calls: [`docs/capabilities.md`](docs/capabilities.md)** — including the handful the client can already speak but no screen surfaces yet.
+
+Screen-by-screen wiring: [`docs/pages.md`](docs/pages.md). Module/data-flow map: [`docs/architecture.md`](docs/architecture.md). REST + WebSocket client surface: [`docs/api-reference.md`](docs/api-reference.md).
 
 ## Running the test suite
 
 Typed in this repo's root:
 
 ```bash
-dart format --output=none --set-exit-if-changed .   # format check (gating)
+dart format --output=none --set-exit-if-changed lib test   # format check (gating)
 flutter analyze                                       # static analysis (gating)
 flutter test --exclude-tags e2e                       # unit + widget + integration tests (gating)
 ```
 
-There is a third, non-gating tier: end-to-end tests that spawn a real `bastion serve` process and drive the app's real (non-mocked) network clients against it.
+There is a third, non-gating tier that needs a real server (and, for Patrol, a real device):
 
 ```bash
-flutter test --tags e2e     # needs a built `bastion` binary; self-skips if none is found
+flutter test --tags e2e      # needs a built `bastion` binary; self-skips if none is found
+scripts/run_patrol_smoke.sh  # Patrol UI smoke test; needs a device + a `bastion` binary
 ```
 
 What each tier answers, and what it costs to run: [`docs/testing.md`](docs/testing.md).
@@ -112,19 +115,37 @@ bastion-ui/
 │   └── widgets/        ← brand primitives + shared widgets
 ├── test/               ← unit/widget, integration, and e2e tiers (see docs/testing.md)
 ├── android/            ← the only platform folder — this is Android-only
-├── docs/               ← architecture, API reference, screens, testing, device install
-└── scripts/            ← start_dev_env.sh, Patrol smoke test runner
+├── docs/               ← capabilities, architecture, API reference, screens, testing, install
+└── scripts/            ← dev-environment bootstrap, Patrol smoke runner, block-record check
 ```
+
+## Scripts
+
+Each is run from this repo's root, in a terminal:
+
+| Script | When you run it |
+|---|---|
+| [`scripts/start_dev_env.sh`](scripts/start_dev_env.sh) | You want to click around against real data — boots an emulator + a real `bastion serve`, then `flutter run`. `--no-run` stops after printing connection info |
+| [`scripts/run_patrol_smoke.sh`](scripts/run_patrol_smoke.sh) | The non-gating Patrol UI smoke test on a real device; writes screenshots under `visual_smoke/` |
+| [`scripts/check_block_records.py`](scripts/check_block_records.py) | Planning-hygiene only: validates block records under `planning/blocks/` (that directory is private and not part of this public repo, so this is a no-op in a plain clone) |
 
 ## Documentation
 
+Start here if you are new:
+
 | Doc | Contents |
 |---|---|
-| [`docs/architecture.md`](docs/architecture.md) | Module map, key types, data flow |
-| [`docs/api-reference.md`](docs/api-reference.md) | `BastionApi` REST methods, `BastionSocket` frames/topics, DTOs |
-| [`docs/pages.md`](docs/pages.md) | Every screen, its route, and the providers/widgets it wires together |
-| [`docs/testing.md`](docs/testing.md) | The three test tiers, and the manual dev-environment bootstrap |
-| [`docs/device-install.md`](docs/device-install.md) | Wireless install onto a real Android device and connecting it over Tailscale |
+| [`docs/capabilities.md`](docs/capabilities.md) | **What the app can do**, one line each, and how to invoke it |
+| [`docs/device-install.md`](docs/device-install.md) | Getting it onto a real Android device over Tailscale |
+
+Working on the code:
+
+| Doc | Contents |
+|---|---|
+| [`docs/architecture.md`](docs/architecture.md) | How a fact gets from the server to a widget; module map |
+| [`docs/pages.md`](docs/pages.md) | Each screen's route, providers and widgets |
+| [`docs/api-reference.md`](docs/api-reference.md) | Every client method, route, DTO and WS frame |
+| [`docs/testing.md`](docs/testing.md) | The three test tiers, and the dev-environment bootstrap |
 
 ## Troubleshooting
 
