@@ -2,12 +2,40 @@
 type: Log
 title: BastionUI Development Log
 description: Chronological log of work completed for BastionUI.
-timestamp: "2026-08-16T02:15:00Z"
+timestamp: "2026-08-29T15:20:00Z"
 ---
 
 # Log — BastionUI
 
 *Append-only working log. One dated entry per session. Newest entries at the top.*
+
+## [2026-08-29]
+
+### Docs cleanup pass — capability catalogue, and the docs re-verified against source
+
+- **What:** Created `docs/capabilities.md` — the catalogue this repo had no equivalent of: every
+  operator capability grouped by task, one line each, with what to tap and the client method/route
+  behind it, derived from `lib/` rather than from doc titles. Deriving it from source is what turned
+  up the gaps: `BastionApi.getLanes()` / `GET /api/lanes` and the whole `lanes_dto.dart` family were
+  in code and integration-tested but documented nowhere (now in `api-reference.md`), and six client
+  methods have no screen behind them at all (now their own section). Corrected stale claims in
+  `architecture.md` (module map was missing 5 DTO files, 3 providers, `runs_screen.dart`,
+  `confirm_sheet.dart` and both widget subtrees; v0.30 prose replaced by a pointer to `kServeApiPin`,
+  actually `v0.38`) and `pages.md` (Settings has four fields — the engine API key and its five-state
+  mount probe were undocumented; repo detail's BU.13.C typed block lanes were absent entirely). Added
+  "What this page is for" openers to all five reference docs, quickstarts to `testing.md` and
+  `device-install.md`, and a mermaid data-flow diagram to `architecture.md` (the repo had 0 of 6
+  quickstarts and 0 diagrams under `docs/`). Cut `docs/index.md` cells to one line each and grouped
+  both it and the README table into "using the app" / "working on the code". Named two runnable
+  things that appeared in no doc — `scripts/run_patrol_smoke.sh` (a real non-gating harness check)
+  and `scripts/check_block_records.py` — and fixed the README's format command, which said
+  `dart format … .` where `planning/harness.json` says `lib test`.
+- **Why:** The README was rewritten to the `write-repo-doc` standard for public release (7a1c9a0),
+  but `docs/` never got the same pass, so the repo's front door taught and its reference docs did
+  not. The operator supplied a five-defect-class checklist from the same pass run on another repo;
+  the load-bearing rule was to derive every list from the code's own registry rather than from the
+  docs index, which is precisely what surfaced `/api/lanes`.
+- **Refs:** `docs/capabilities.md`; `carryover[]` `public-repo-hardcoded-tailnet-address-device-install`
 
 ## [run: 2026-08-18]
 
