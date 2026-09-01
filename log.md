@@ -2,12 +2,45 @@
 type: Log
 title: BastionUI Development Log
 description: Chronological log of work completed for BastionUI.
-timestamp: "2026-08-29T15:20:00Z"
+timestamp: "2026-08-31T21:35:00Z"
 ---
 
 # Log — BastionUI
 
 *Append-only working log. One dated entry per session. Newest entries at the top.*
+
+## [2026-08-31]
+
+### `planning/context.md` audited against the repo — router, phase list and standing rules re-synced
+
+- **What:** A scoped audit of `planning/context.md` only (no `/update-docs` sweep), with surgical
+  fixes. **Document Set:** the table named 7 files and missed 6 that exist — `knowledge.md`,
+  `memory.md`, `state.json`, `blocks/`, `handoff.md`, `archive/` — all added, and `index.md`'s row
+  now says it is the full file-by-file map to this table's short form. **`docs/` was absent
+  entirely:** the router pointed only into `planning/`, so the seven-doc `docs/` tree
+  (`index` · `capabilities` · `architecture` · `pages` · `api-reference` · `testing` ·
+  `device-install`) was unreachable from the file that claims to be the router; it now has its own
+  table. **Phase list:** stopped at "Phase 5+ — Forward-looking" while `master-plan.md` carries
+  Phases 6, 10, 11, 12 and 13 — all five added, Phase 5 marked retired (superseded by Phase 12), and
+  a line stating which phase is current lives in `status.md`, never here. **Fast Facts:** the
+  destination read "BastionUI v0.1" with the repo at Phase 13 — replaced with an evergreen framing
+  ("an *instrument*, not an inventory") pointing at `status.md`; stack corrected against
+  `pubspec.yaml` (`riverpod` → `flutter_riverpod`, `rxdart` added). **Governing Principles:** 6
+  against CLAUDE.md's 8 numbered Standing Rules — added the four it dropped (OKF frontmatter +
+  `index.md` row, decisions append-only, verified identities, never `git push` from inside this
+  repo) as items 7–10, each one line with its rule number, under a note that CLAUDE.md is canonical.
+  Frontmatter `related:` extended with `docs-index` / `knowledge` / `memory` (doc_ids verified).
+- **Why:** `context.md` is the read-first orientation file, so every claim in it is one a fresh
+  agent acts on without checking. Three of its four sections had drifted independently — the router
+  omitted a whole documentation tree, the phase list was four phases behind the plan, and the
+  condensed rules list had silently become a subset of CLAUDE.md's. A router that is a subset of the
+  repo sends agents looking in the wrong place and reports a clean-looking wrong answer.
+- **Gotcha (cost one red gate):** linking `../docs/index.md` from a `planning/` file fails
+  `E_LINK_DEAD_MARKDOWN`. `planning/` is a symlink into the brain vault, so a relative link that
+  climbs out of it resolves against `core/_planning/`, not this repo. The `docs/` table names its
+  paths as code spans instead of links, with the reason stated inline so the next agent does not
+  retry it. `bastion validate-brain --links` and `--graph` both clean after the fix.
+- **Refs:** `planning/context.md`, `CLAUDE.md` Standing Rules 1–8
 
 ## [2026-08-29]
 
