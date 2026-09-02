@@ -97,6 +97,15 @@ abstract final class AppTheme {
           );
         }),
       ),
+      snackBarTheme: SnackBarThemeData(
+        backgroundColor: AppTokens.surface,
+        contentTextStyle: const TextStyle(color: AppTokens.ink),
+        actionTextColor: AppTokens.primary,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppTokens.radiusMd),
+          side: const BorderSide(color: AppTokens.line),
+        ),
+      ),
       dividerTheme: const DividerThemeData(color: AppTokens.line, space: 1),
       inputDecorationTheme: InputDecorationTheme(
         border: _inputBorder,
